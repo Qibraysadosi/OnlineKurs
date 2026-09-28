@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.api.common import forbidden, get_visible_course_or_404
+from app.api.common import IdPath, forbidden, get_visible_course_or_404
 from app.core.deps import CurrentUser, DbSession, OptionalUser
 from app.models import Review
 from app.schemas.common import Page
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/courses", tags=["reviews"])
 
 @router.get("/{course_id}/reviews", response_model=Page[ReviewOut])
 def list_reviews(
-    course_id: int,
+    course_id: IdPath,
     db: DbSession,
     user: OptionalUser,
     page: int = Query(default=1, ge=1),
@@ -41,7 +41,7 @@ def list_reviews(
 
 @router.post("/{course_id}/reviews", response_model=ReviewOut, status_code=status.HTTP_201_CREATED)
 def create_or_update_review(
-    course_id: int, payload: ReviewCreate, db: DbSession, user: CurrentUser, response: Response
+    course_id: IdPath, payload: ReviewCreate, db: DbSession, user: CurrentUser, response: Response
 ) -> ReviewOut:
     course = get_visible_course_or_404(db, course_id, user)
     if course.teacher_id == user.id:

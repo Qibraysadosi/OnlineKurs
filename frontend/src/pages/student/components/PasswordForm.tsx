@@ -4,9 +4,11 @@ import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { authApi, getErrorMessage } from "@/api";
+import { tokenStorage } from "@/api/client";
 import { Button, Card, CardFooter, CardHeader, IconButton, Input } from "@/components/ui";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/useToast";
-import type { ChangePasswordPayload } from "@/types";
+import type { ChangePasswordPayload, Tokens } from "@/types";
 import { passwordChangeSchema, type PasswordFormValues } from "./schemas";
 
 const EMPTY: PasswordFormValues = { current_password: "", new_password: "", confirm_password: "" };
@@ -14,15 +16,20 @@ const EMPTY: PasswordFormValues = { current_password: "", new_password: "", conf
 /** Change-password card with show/hide toggle for the new password. */
 export function PasswordForm() {
   const toast = useToast();
+  const { setUser } = useAuth();
   const [reveal, setReveal] = useState(false);
   const form = useForm<PasswordFormValues>({ resolver: zodResolver(passwordChangeSchema), defaultValues: EMPTY });
   const { errors } = form.formState;
 
   const change = useMutation({
     mutationFn: (payload: ChangePasswordPayload) => authApi.changePassword(payload),
-    onSuccess: () => {
+    onSuccess: (tokens: Tokens) => {
+      // The change revokes every earlier token pair (including ours): swap in the fresh one
+      // so the next authenticated request does not bounce the user to /login.
+      tokenStorage.set(tokens);
+      setUser(tokens.user);
       form.reset(EMPTY);
-      toast.success("Parol o'zgartirildi", { description: "Keyingi kirishda yangi paroldan foydalaning." });
+      toast.success("Parol o'zgartirildi", { description: "Yangi parol darhol kuchga kirdi." });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });

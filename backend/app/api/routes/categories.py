@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Response, status
 from sqlalchemy import select, update
 
-from app.api.common import conflict, get_category_or_404
+from app.api.common import IdPath, conflict, get_category_or_404
 from app.core.deps import AdminUser, DbSession
 from app.models import Category, Course
 from app.schemas.category import CategoryCreate, CategoryOut, CategoryUpdate
@@ -46,7 +46,7 @@ def create_category(payload: CategoryCreate, db: DbSession, _admin: AdminUser) -
 
 @router.patch("/{category_id}", response_model=CategoryOut)
 def update_category(
-    category_id: int, payload: CategoryUpdate, db: DbSession, _admin: AdminUser
+    category_id: IdPath, payload: CategoryUpdate, db: DbSession, _admin: AdminUser
 ) -> CategoryOut:
     category = get_category_or_404(db, category_id)
     changes = payload.model_dump(exclude_unset=True)
@@ -66,7 +66,7 @@ def update_category(
 
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
-def delete_category(category_id: int, db: DbSession, _admin: AdminUser) -> Response:
+def delete_category(category_id: IdPath, db: DbSession, _admin: AdminUser) -> Response:
     category = get_category_or_404(db, category_id)
     db.execute(update(Course).where(Course.category_id == category.id).values(category_id=None))
     db.delete(category)

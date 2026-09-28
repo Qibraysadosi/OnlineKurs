@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Response, status
 from sqlalchemy import func, select
 
-from app.api.common import bad_request, get_owned_course_or_403, get_owned_section_or_403
+from app.api.common import IdPath, bad_request, get_owned_course_or_403, get_owned_section_or_403
 from app.core.deps import DbSession, TeacherUser
 from app.models import Section
 from app.schemas.section import SectionCreate, SectionOrder, SectionOut, SectionUpdate
-from app.services.catalog import section_out, sections_for_course
+from app.services import storage
+from app.services.catalog import section_out, sections_for_course, unpublish_when_empty
 
 router = APIRouter(tags=["sections"])
 
@@ -14,7 +15,7 @@ router = APIRouter(tags=["sections"])
     "/courses/{course_id}/sections", response_model=SectionOut, status_code=status.HTTP_201_CREATED
 )
 def create_section(
-    course_id: int, payload: SectionCreate, db: DbSession, user: TeacherUser
+    course_id: IdPath, payload: SectionCreate, db: DbSession, user: TeacherUser
 ) -> SectionOut:
     course = get_owned_course_or_403(db, course_id, user)
     max_position = db.execute(
@@ -29,7 +30,7 @@ def create_section(
 
 @router.put("/courses/{course_id}/sections/order", response_model=list[SectionOut])
 def reorder_sections(
-    course_id: int, payload: SectionOrder, db: DbSession, user: TeacherUser
+    course_id: IdPath, payload: SectionOrder, db: DbSession, user: TeacherUser
 ) -> list[SectionOut]:
     course = get_owned_course_or_403(db, course_id, user)
     sections = {section.id: section for section in course.sections}
@@ -46,7 +47,7 @@ def reorder_sections(
 
 @router.patch("/sections/{section_id}", response_model=SectionOut)
 def update_section(
-    section_id: int, payload: SectionUpdate, db: DbSession, user: TeacherUser
+    section_id: IdPath, payload: SectionUpdate, db: DbSession, user: TeacherUser
 ) -> SectionOut:
     section, _course = get_owned_section_or_403(db, section_id, user)
     if payload.title is not None:
@@ -59,8 +60,11 @@ def update_section(
 @router.delete(
     "/sections/{section_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response
 )
-def delete_section(section_id: int, db: DbSession, user: TeacherUser) -> Response:
-    section, _course = get_owned_section_or_403(db, section_id, user)
+def delete_section(section_id: IdPath, db: DbSession, user: TeacherUser) -> Response:
+    section, course = get_owned_section_or_403(db, section_id, user)
+    files = storage.lesson_files(section.lessons)
     db.delete(section)
+    unpublish_when_empty(db, course)
     db.commit()
+    storage.delete_uploads(files)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

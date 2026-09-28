@@ -7,11 +7,14 @@ import { Card } from "@/components/ui/Card";
 import { StarRating } from "@/components/ui/StarRating";
 
 export function SectionHeading({
+  id,
   eyebrow,
   title,
   description,
   action,
 }: {
+  /** Heading id, referenced by the parent section's aria-labelledby */
+  id?: string;
   eyebrow?: string;
   title: string;
   description?: string;
@@ -21,7 +24,9 @@ export function SectionHeading({
     <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow && <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-primary-600 dark:text-primary-300">{eyebrow}</p>}
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">{title}</h2>
+        <h2 id={id} className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
+          {title}
+        </h2>
         {description && <p className="mt-1.5 max-w-2xl text-sm text-slate-500 dark:text-slate-400 sm:text-base">{description}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
@@ -50,7 +55,7 @@ const STEPS = [
 export function HowItWorks() {
   return (
     <section aria-labelledby="how-it-works">
-      <SectionHeading eyebrow="Qanday ishlaydi" title="Uch qadamda boshlang" description="Ro'yxatdan o'tishdan birinchi darsgacha bir necha daqiqa kifoya." />
+      <SectionHeading id="how-it-works" eyebrow="Qanday ishlaydi" title="Uch qadamda boshlang" description="Ro'yxatdan o'tishdan birinchi darsgacha bir necha daqiqa kifoya." />
       <ol className="grid gap-5 md:grid-cols-3">
         {STEPS.map((step, idx) => (
           <li key={step.title}>
@@ -97,7 +102,7 @@ const TESTIMONIALS = [
 export function Testimonials() {
   return (
     <section aria-labelledby="testimonials">
-      <SectionHeading eyebrow="Fikrlar" title="Talabalarimiz nima deydi" description="Har kuni minglab talabalar OnlineKurs orqali yangi ko'nikmalarni egallaydi." />
+      <SectionHeading id="testimonials" eyebrow="Fikrlar" title="Talabalarimiz nima deydi" description="Har kuni minglab talabalar OnlineKurs orqali yangi ko'nikmalarni egallaydi." />
       <div className="grid gap-5 md:grid-cols-3">
         {TESTIMONIALS.map((item) => (
           <Card key={item.name} className="flex h-full flex-col">
@@ -135,21 +140,21 @@ export function CtaBanner({ isAuthenticated }: { isAuthenticated: boolean }) {
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
           {isAuthenticated ? (
             <>
-              <Link to="/courses" className={buttonClassName({ size: "lg", className: "bg-white text-primary-700 shadow-sm hover:bg-white/90" })}>
+              <Link to="/courses" className={buttonClassName({ variant: "inverse", size: "lg" })}>
                 Kurslarni ko'rish
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
-              <Link to="/dashboard" className={buttonClassName({ size: "lg", className: "border border-white/40 bg-white/10 text-white hover:bg-white/20" })}>
+              <Link to="/dashboard" className={buttonClassName({ variant: "inverseOutline", size: "lg" })}>
                 Boshqaruv paneli
               </Link>
             </>
           ) : (
             <>
-              <Link to="/register" className={buttonClassName({ size: "lg", className: "bg-white text-primary-700 shadow-sm hover:bg-white/90" })}>
+              <Link to="/register" className={buttonClassName({ variant: "inverse", size: "lg" })}>
                 Bepul ro'yxatdan o'tish
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
-              <Link to="/courses" className={buttonClassName({ size: "lg", className: "border border-white/40 bg-white/10 text-white hover:bg-white/20" })}>
+              <Link to="/courses" className={buttonClassName({ variant: "inverseOutline", size: "lg" })}>
                 Kurslarni ko'rish
               </Link>
             </>

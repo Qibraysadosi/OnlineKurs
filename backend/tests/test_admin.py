@@ -121,3 +121,32 @@ def test_admin_courses_and_payments(
         ).json()["total"]
         == 1
     )
+
+
+def test_deleting_course_or_user_with_settled_payments_is_refused(
+    client: TestClient, db, teacher, student, admin_headers, student_headers, teacher_headers
+) -> None:
+    course = create_course(db, teacher, title="Pullik kurs", price=200000)
+    payment = client.post(
+        "/api/payments", json={"course_id": course.id}, headers=student_headers
+    ).json()
+    client.post(f"/api/payments/{payment['id']}/confirm", headers=student_headers)
+    revenue_before = client.get("/api/admin/stats", headers=admin_headers).json()["revenue_total"]
+
+    assert client.delete(f"/api/courses/{course.id}", headers=teacher_headers).status_code == 409
+    assert client.delete(f"/api/admin/users/{student.id}", headers=admin_headers).status_code == 409
+    assert client.delete(f"/api/admin/users/{teacher.id}", headers=admin_headers).status_code == 409
+    stats = client.get("/api/admin/stats", headers=admin_headers).json()
+    assert stats["revenue_total"] == revenue_before == 200000
+
+    # Pending / failed payments carry no money and do not block deletion.
+    pending_course = create_course(db, teacher, title="Kutilayotgan kurs", price=100000)
+    pending = client.post(
+        "/api/payments", json={"course_id": pending_course.id}, headers=student_headers
+    ).json()
+    client.post(f"/api/payments/{pending['id']}/cancel", headers=student_headers)
+    assert (
+        client.delete(f"/api/courses/{pending_course.id}", headers=teacher_headers).status_code
+        == 204
+    )
+    assert client.get("/api/admin/payments", headers=admin_headers).json()["total"] == 1

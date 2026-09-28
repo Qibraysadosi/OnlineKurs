@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { authApi } from "@/api/auth";
 import { LOGOUT_EVENT, tokenStorage } from "@/api/client";
-import type { LoginPayload, RegisterPayload, Role, UserPublic } from "@/types";
+import type { LoginPayload, RegisterPayload, Role, Tokens, UserPublic } from "@/types";
 
 interface AuthContextValue {
   user: UserPublic | null;
@@ -70,22 +70,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(LOGOUT_EVENT, handler);
   }, [queryClient]);
 
-  const login = useCallback(
-    async (payload: LoginPayload) => {
-      const tokens = await authApi.login(payload);
+  // Everything fetched while anonymous (has_access, is_enrolled, video URLs, ...) is wrong for
+  // the signed-in user, so the cache is dropped exactly like on logout.
+  const startSession = useCallback(
+    (tokens: Tokens) => {
       tokenStorage.set(tokens);
+      queryClient.clear();
       setUserState(tokens.user);
       return tokens.user;
     },
-    [],
+    [queryClient],
   );
 
-  const register = useCallback(async (payload: RegisterPayload) => {
-    const tokens = await authApi.register(payload);
-    tokenStorage.set(tokens);
-    setUserState(tokens.user);
-    return tokens.user;
-  }, []);
+  const login = useCallback(async (payload: LoginPayload) => startSession(await authApi.login(payload)), [startSession]);
+
+  const register = useCallback(async (payload: RegisterPayload) => startSession(await authApi.register(payload)), [startSession]);
 
   const logout = useCallback(() => {
     clearSession();

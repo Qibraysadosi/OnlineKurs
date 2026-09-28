@@ -13,7 +13,7 @@ export function Sidebar({ groups, onNavigate, className }: SidebarProps) {
     <nav aria-label="Boshqaruv navigatsiyasi" className={cn("flex flex-col gap-6", className)}>
       {groups.map((group) => (
         <div key={group.title}>
-          <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             {group.title}
           </p>
           <ul className="space-y-0.5">

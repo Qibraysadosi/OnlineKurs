@@ -1,11 +1,14 @@
 import { ChevronDown, LayoutDashboard, LogOut, Menu, Search, User, X } from "lucide-react";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button, IconButton, buttonClassName } from "@/components/ui/Button";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/Dropdown";
 import { useAuth } from "@/hooks/useAuth";
+import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
 import { useLockBodyScroll } from "@/hooks/useLockBodyScroll";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useToast } from "@/hooks/useToast";
 import { cn, roleLabel } from "@/lib/utils";
 import { Container } from "./Container";
@@ -57,12 +60,23 @@ export function Navbar() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  useLockBodyScroll(mobileOpen);
+  const mobilePanelRef = useRef<HTMLDivElement>(null);
+  // The drawer only exists below md: once the viewport grows past it the drawer must not keep
+  // the body locked or trap Tab inside a display:none panel.
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const drawerOpen = mobileOpen && !isDesktop;
+  const closeMobile = () => setMobileOpen(false);
+  useLockBodyScroll(drawerOpen);
+  useDialogBehaviour(drawerOpen, closeMobile, mobilePanelRef);
 
   useEffect(() => {
     setMobileOpen(false);
     setSearchOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (isDesktop) setMobileOpen(false);
+  }, [isDesktop]);
 
   const panelLink = panelLinkForRole(role);
   const groups = navGroupsForRole(role);
@@ -163,66 +177,79 @@ export function Navbar() {
           )}
 
           <IconButton
-            aria-label={mobileOpen ? "Menyuni yopish" : "Menyuni ochish"}
-            aria-expanded={mobileOpen}
+            aria-label={drawerOpen ? "Menyuni yopish" : "Menyuni ochish"}
+            aria-expanded={drawerOpen}
             className="md:hidden"
             onClick={() => setMobileOpen((v) => !v)}
           >
-            {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
+            {drawerOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
           </IconButton>
         </div>
       </Container>
 
-      {mobileOpen && (
-        <div className="fixed inset-x-0 bottom-0 top-16 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Mobil menyu">
-          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setMobileOpen(false)} aria-hidden="true" />
-          <div className="absolute inset-y-0 left-0 flex w-[85%] max-w-sm flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-xl animate-in-left dark:border-slate-800 dark:bg-slate-950">
-            <SearchForm onDone={() => setMobileOpen(false)} />
-
-            {isAuthenticated && user && (
-              <div className="mt-4 flex items-center gap-3 rounded-xl bg-slate-100 p-3 dark:bg-slate-900">
-                <Avatar src={user.avatar_url} name={user.full_name} />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{user.full_name}</p>
-                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">{roleLabel(user.role)}</p>
-                </div>
+      {/* Portaled to <body>: the header's backdrop-blur would otherwise become the containing block
+          of this fixed drawer and collapse it to the header's height. */}
+      {drawerOpen &&
+        createPortal(
+          <div className="fixed inset-x-0 bottom-0 top-16 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Mobil menyu">
+            <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={closeMobile} aria-hidden="true" />
+            <div
+              ref={mobilePanelRef}
+              tabIndex={-1}
+              className="ok-focus absolute inset-y-0 left-0 flex w-[85%] max-w-sm flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-xl animate-in-left dark:border-slate-800 dark:bg-slate-950"
+            >
+              <div className="flex items-center gap-2">
+                <SearchForm onDone={closeMobile} />
+                <IconButton aria-label="Menyuni yopish" size="sm" onClick={closeMobile}>
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </IconButton>
               </div>
-            )}
 
-            <nav aria-label="Mobil navigatsiya" className="mt-4 flex flex-col gap-1">
-              <MobileLink to="/courses">Kurslar</MobileLink>
-              {isAuthenticated &&
-                groups.map((group) => (
-                  <div key={group.title} className="mt-3">
-                    <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{group.title}</p>
-                    {group.items.map((item) => (
-                      <MobileLink key={item.to} to={item.to} end={item.end} icon={<item.icon className="h-4 w-4" />}>
-                        {item.label}
-                      </MobileLink>
-                    ))}
+              {isAuthenticated && user && (
+                <div className="mt-4 flex items-center gap-3 rounded-xl bg-slate-100 p-3 dark:bg-slate-900">
+                  <Avatar src={user.avatar_url} name={user.full_name} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{user.full_name}</p>
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">{roleLabel(user.role)}</p>
                   </div>
-                ))}
-            </nav>
-
-            <div className="mt-auto pt-6">
-              {isAuthenticated ? (
-                <Button variant="outline" fullWidth leftIcon={<LogOut className="h-4 w-4" />} onClick={handleLogout}>
-                  Chiqish
-                </Button>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <Link to="/login" className={buttonClassName({ variant: "outline" })}>
-                    Kirish
-                  </Link>
-                  <Link to="/register" className={buttonClassName({ variant: "gradient" })}>
-                    Ro'yxatdan o'tish
-                  </Link>
                 </div>
               )}
+
+              <nav aria-label="Mobil navigatsiya" className="mt-4 flex flex-col gap-1">
+                <MobileLink to="/courses">Kurslar</MobileLink>
+                {isAuthenticated &&
+                  groups.map((group) => (
+                    <div key={group.title} className="mt-3">
+                      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{group.title}</p>
+                      {group.items.map((item) => (
+                        <MobileLink key={item.to} to={item.to} end={item.end} icon={<item.icon className="h-4 w-4" />}>
+                          {item.label}
+                        </MobileLink>
+                      ))}
+                    </div>
+                  ))}
+              </nav>
+
+              <div className="mt-auto pt-6">
+                {isAuthenticated ? (
+                  <Button variant="outline" fullWidth leftIcon={<LogOut className="h-4 w-4" />} onClick={handleLogout}>
+                    Chiqish
+                  </Button>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Link to="/login" className={buttonClassName({ variant: "outline" })}>
+                      Kirish
+                    </Link>
+                    <Link to="/register" className={buttonClassName({ variant: "gradient" })}>
+                      Ro'yxatdan o'tish
+                    </Link>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </header>
   );
 }

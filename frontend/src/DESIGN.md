@@ -63,7 +63,7 @@ import { authApi, coursesApi, lessonsApi, getErrorMessage, queryKeys } from "@/a
 | | `me()` | `UserPublic` |
 | | `updateMe(UpdateMePayload)` | `UserPublic` |
 | | `uploadAvatar(file: File, onProgress?)` | `UserPublic` |
-| | `changePassword(ChangePasswordPayload)` | `void` |
+| | `changePassword(ChangePasswordPayload)` | `Tokens` (old pair revoked; store the new one) |
 | `categoriesApi` | `list()` | `Category[]` |
 | | `create(CategoryCreatePayload)` / `update(id, CategoryUpdatePayload)` | `Category` |
 | | `remove(id)` | `void` |

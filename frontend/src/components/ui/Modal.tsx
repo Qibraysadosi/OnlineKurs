@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
 import { useLockBodyScroll } from "@/hooks/useLockBodyScroll";
 import { cn } from "@/lib/utils";
 import { IconButton } from "./Button";
@@ -22,47 +23,11 @@ export interface ModalProps {
 
 const SIZES = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
 
-const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-
 export function Modal({ open, onClose, title, description, children, footer, size = "md", closeOnOverlay = true, className }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  const previousFocus = useRef<HTMLElement | null>(null);
   useLockBodyScroll(open);
-
-  useEffect(() => {
-    if (!open) return;
-    previousFocus.current = document.activeElement as HTMLElement | null;
-    const panel = panelRef.current;
-    const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
-    (first ?? panel)?.focus();
-
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && closeOnOverlay) {
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-      if (event.key === "Tab" && panel) {
-        const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null);
-        if (items.length === 0) return;
-        const firstEl = items[0]!;
-        const lastEl = items[items.length - 1]!;
-        if (event.shiftKey && document.activeElement === firstEl) {
-          event.preventDefault();
-          lastEl.focus();
-        } else if (!event.shiftKey && document.activeElement === lastEl) {
-          event.preventDefault();
-          firstEl.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      previousFocus.current?.focus?.();
-    };
-  }, [open, onClose, closeOnOverlay]);
+  useDialogBehaviour(open, onClose, panelRef, { closeOnEscape: closeOnOverlay });
 
   if (!open) return null;
 

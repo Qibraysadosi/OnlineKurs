@@ -1,6 +1,9 @@
 """Upload storage: validates, streams to disk under UPLOAD_DIR and builds absolute URLs."""
 
+import logging
+import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,9 +11,16 @@ import aiofiles
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
+from app.models import Course, Lesson, User
+
+logger = logging.getLogger("onlinekurs.storage")
 
 CHUNK_SIZE = 1024 * 1024
 SUBDIRS = ("avatars", "covers", "videos", "attachments", "seed")
+# Stored filenames are always `uuid4.hex + "." + extension` (see save_upload).
+STORED_FILENAME_RE = re.compile(r"^[0-9a-f]{32}\.([a-z0-9]{1,10})$")
+
+UploadRef = tuple[str | None, "UploadKind"]
 
 
 @dataclass(frozen=True)
@@ -106,16 +116,55 @@ async def save_upload(file: UploadFile, kind: UploadKind) -> str:
     return public_url(kind.subdir, filename)
 
 
-def delete_upload(url: str | None) -> None:
-    """Remove a previously uploaded file when it lives under our own uploads dir."""
-    if not url:
+def is_uploaded_url(url: str | None) -> bool:
+    """True when the URL points into this backend's own /uploads/ folder."""
+    return bool(url) and str(url).startswith(f"{settings.BACKEND_URL}/uploads/")
+
+
+def delete_upload(url: str | None, kind: UploadKind) -> None:
+    """Remove a file previously stored by `save_upload(..., kind)`.
+
+    Only URLs that point at `kind.subdir` with a generated filename and an allowed
+    extension are touched, so a planted URL can never reach another kind of file.
+    """
+    if not url or not is_uploaded_url(url):
         return
-    prefix = f"{settings.BACKEND_URL}/uploads/"
-    if not url.startswith(prefix):
-        return
-    relative = url[len(prefix) :]
+    relative = url[len(f"{settings.BACKEND_URL}/uploads/") :]
     subdir, _, filename = relative.partition("/")
-    if subdir not in SUBDIRS or subdir == "seed" or not filename or "/" in filename:
+    match = STORED_FILENAME_RE.match(filename)
+    if subdir != kind.subdir or match is None or match.group(1) not in kind.extensions:
         return
     path: Path = settings.UPLOAD_DIR / subdir / filename
-    path.unlink(missing_ok=True)
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Could not delete upload %s", path)
+
+
+def delete_uploads(refs: Iterable[UploadRef]) -> None:
+    for url, kind in refs:
+        delete_upload(url, kind)
+
+
+def lesson_files(lessons: Iterable[Lesson]) -> list[UploadRef]:
+    refs: list[UploadRef] = []
+    for lesson in lessons:
+        refs.append((lesson.video_url, VIDEO))
+        refs.append((lesson.attachment_url, ATTACHMENT))
+    return refs
+
+
+def course_files(course: Course) -> list[UploadRef]:
+    """Cover plus every lesson video/attachment; collect before deleting the course."""
+    refs: list[UploadRef] = [(course.cover_url, COVER)]
+    for section in course.sections:
+        refs.extend(lesson_files(section.lessons))
+    return refs
+
+
+def user_files(user: User) -> list[UploadRef]:
+    """Avatar plus the files of every course the user teaches."""
+    refs: list[UploadRef] = [(user.avatar_url, AVATAR)]
+    for course in user.courses:
+        refs.extend(course_files(course))
+    return refs

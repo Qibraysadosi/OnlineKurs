@@ -1,8 +1,9 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.common import (
+    IdPath,
     bad_request,
     conflict,
     forbidden,
@@ -20,6 +21,7 @@ from app.services.enrollments import ensure_enrollment
 router = APIRouter(tags=["payments"])
 
 NOT_PAYMENT_OWNER = "Bu to'lov sizga tegishli emas"
+ALREADY_ENROLLED = "Siz bu kursga allaqachon yozilgansiz"
 
 
 def _own_payment(db: DbSession, payment_id: int, user: CurrentUser) -> Payment:
@@ -41,12 +43,32 @@ def my_payments(db: DbSession, user: CurrentUser) -> list[PaymentOut]:
 
 
 @router.post("/payments", response_model=PaymentOut, status_code=status.HTTP_201_CREATED)
-def create_payment(payload: PaymentCreate, db: DbSession, user: CurrentUser) -> PaymentOut:
+def create_payment(
+    payload: PaymentCreate, db: DbSession, user: CurrentUser, response: Response
+) -> PaymentOut:
     course = get_visible_course_or_404(db, payload.course_id, user)
     if course.price == 0:
         raise bad_request("Bu kurs bepul, to'g'ridan-to'g'ri yozilishingiz mumkin")
     if is_enrolled(db, user.id, course.id):
-        raise conflict("Siz bu kursga allaqachon yozilgansiz")
+        raise conflict(ALREADY_ENROLLED)
+    pending = db.execute(
+        select(Payment)
+        .where(
+            Payment.user_id == user.id,
+            Payment.course_id == course.id,
+            Payment.status == PaymentStatus.pending,
+        )
+        .order_by(Payment.id.desc())
+    ).scalars().first()
+    if pending is not None:
+        # Double-click / second tab: reuse the open checkout instead of a second row,
+        # but always quote the course's current price.
+        if pending.amount != course.price:
+            pending.amount = course.price
+            db.commit()
+            db.refresh(pending)
+        response.status_code = status.HTTP_200_OK
+        return payment_out(db, pending)
     payment = Payment(
         user_id=user.id, course_id=course.id, amount=course.price, status=PaymentStatus.pending
     )
@@ -57,11 +79,19 @@ def create_payment(payload: PaymentCreate, db: DbSession, user: CurrentUser) -> 
 
 
 @router.post("/payments/{payment_id}/confirm", response_model=PaymentOut)
-def confirm_payment(payment_id: int, db: DbSession, user: CurrentUser) -> PaymentOut:
+def confirm_payment(payment_id: IdPath, db: DbSession, user: CurrentUser) -> PaymentOut:
     payment = _own_payment(db, payment_id, user)
     if payment.status in (PaymentStatus.failed, PaymentStatus.refunded):
         raise conflict("Bu to'lov bekor qilingan")
     if payment.status == PaymentStatus.pending:
+        if is_enrolled(db, payment.user_id, payment.course_id):
+            # Access already granted (another payment or a free enrollment): never charge twice.
+            payment.status = PaymentStatus.failed
+            db.commit()
+            raise conflict(ALREADY_ENROLLED)
+        # The price may have changed since checkout was opened: charge what the course costs now.
+        if payment.amount != payment.course.price:
+            payment.amount = payment.course.price
         payment.status = PaymentStatus.paid
         payment.paid_at = utcnow()
     ensure_enrollment(db, payment.user_id, payment.course_id)
@@ -71,7 +101,7 @@ def confirm_payment(payment_id: int, db: DbSession, user: CurrentUser) -> Paymen
 
 
 @router.post("/payments/{payment_id}/cancel", response_model=PaymentOut)
-def cancel_payment(payment_id: int, db: DbSession, user: CurrentUser) -> PaymentOut:
+def cancel_payment(payment_id: IdPath, db: DbSession, user: CurrentUser) -> PaymentOut:
     payment = _own_payment(db, payment_id, user)
     if payment.status != PaymentStatus.pending:
         raise conflict("Faqat kutilayotgan to'lovni bekor qilish mumkin")

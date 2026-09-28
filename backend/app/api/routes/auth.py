@@ -2,26 +2,12 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.core.deps import DbSession
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    hash_password,
-    verify_password,
-)
+from app.core.security import decode_token, hash_password, token_version, verify_password
 from app.models import User, UserRole
 from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, Tokens
-from app.schemas.user import UserPublic
+from app.services.tokens import issue_tokens
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-def issue_tokens(user: User) -> Tokens:
-    return Tokens(
-        access_token=create_access_token(user.id, user.role.value),
-        refresh_token=create_refresh_token(user.id),
-        user=UserPublic.model_validate(user),
-    )
 
 
 @router.post("/register", response_model=Tokens, status_code=status.HTTP_201_CREATED)
@@ -59,9 +45,9 @@ def login(payload: LoginRequest, db: DbSession) -> Tokens:
 
 @router.post("/refresh", response_model=Tokens)
 def refresh(payload: RefreshRequest, db: DbSession) -> Tokens:
-    user_id = decode_token(payload.refresh_token, "refresh")
-    user = db.get(User, user_id) if user_id is not None else None
-    if user is None:
+    claims = decode_token(payload.refresh_token, "refresh")
+    user = db.get(User, claims.user_id) if claims is not None else None
+    if user is None or claims is None or claims.version != token_version(user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token yaroqsiz yoki muddati tugagan"
         )

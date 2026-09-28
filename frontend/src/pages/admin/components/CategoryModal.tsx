@@ -1,6 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { categoriesApi, getErrorMessage, queryKeys } from "@/api";
@@ -45,16 +44,21 @@ export interface CategoryModalProps {
   category: Category | null;
 }
 
-/** Create / edit category form in a modal, with a live icon preview. */
+/**
+ * Create / edit category form in a modal, with a live icon preview.
+ * The form is mounted per open (keyed by category) so it starts with the right values;
+ * resetting an already-interactive form in an effect used to drop the first keystrokes.
+ */
 export function CategoryModal({ open, onClose, category }: CategoryModalProps) {
+  if (!open) return null;
+  return <CategoryForm key={category?.id ?? "new"} onClose={onClose} category={category} />;
+}
+
+function CategoryForm({ onClose, category }: Omit<CategoryModalProps, "open">) {
   const toast = useToast();
   const invalidate = useInvalidateAdmin();
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: toFormValues(category) });
-  const { register, handleSubmit, reset, watch, formState } = form;
-
-  useEffect(() => {
-    if (open) reset(toFormValues(category));
-  }, [open, category, reset]);
+  const { register, handleSubmit, watch, formState } = form;
 
   const save = useMutation({
     mutationFn: (values: FormValues) =>
@@ -74,7 +78,7 @@ export function CategoryModal({ open, onClose, category }: CategoryModalProps) {
 
   return (
     <Modal
-      open={open}
+      open
       onClose={onClose}
       closeOnOverlay={!submitting}
       title={category ? "Kategoriyani tahrirlash" : "Yangi kategoriya"}

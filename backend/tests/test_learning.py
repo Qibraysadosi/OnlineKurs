@@ -142,11 +142,123 @@ def test_payment_rules(client: TestClient, db, teacher, student_headers, admin_h
     )
 
 
+def test_duplicate_pending_payments_are_reused_and_never_double_charged(
+    client: TestClient, db, teacher, student_headers, admin_headers
+) -> None:
+    course = create_course(db, teacher, title="Pullik kurs", price=150000)
+    first = client.post("/api/payments", json={"course_id": course.id}, headers=student_headers)
+    assert first.status_code == 201
+    second = client.post("/api/payments", json={"course_id": course.id}, headers=student_headers)
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"]
+
+    # A second pending row (e.g. one an admin left open) cannot be confirmed once enrolled.
+    from app.models import Payment, PaymentStatus
+
+    extra = Payment(
+        user_id=first.json()["user"]["id"],
+        course_id=course.id,
+        amount=course.price,
+        status=PaymentStatus.pending,
+    )
+    db.add(extra)
+    db.commit()
+    assert (
+        client.post(f"/api/payments/{first.json()['id']}/confirm", headers=student_headers).json()[
+            "status"
+        ]
+        == "paid"
+    )
+    rejected = client.post(f"/api/payments/{extra.id}/confirm", headers=student_headers)
+    assert rejected.status_code == 409
+    mine = {item["id"]: item["status"] for item in client.get("/api/me/payments", headers=student_headers).json()}
+    assert mine[extra.id] == "failed"
+    assert mine[first.json()["id"]] == "paid"
+
+    # Refunding one of two paid payments keeps the enrollment backed by the other.
+    paid_twice = Payment(
+        user_id=first.json()["user"]["id"],
+        course_id=course.id,
+        amount=course.price,
+        status=PaymentStatus.paid,
+    )
+    db.add(paid_twice)
+    db.commit()
+    client.patch(
+        f"/api/admin/payments/{paid_twice.id}", json={"status": "refunded"}, headers=admin_headers
+    )
+    assert (
+        client.get("/api/courses/pullik-kurs", headers=student_headers).json()["is_enrolled"]
+        is True
+    )
+    client.patch(
+        f"/api/admin/payments/{first.json()['id']}",
+        json={"status": "refunded"},
+        headers=admin_headers,
+    )
+    assert (
+        client.get("/api/courses/pullik-kurs", headers=student_headers).json()["is_enrolled"]
+        is False
+    )
+
+
+def test_pending_payment_follows_course_price_changes(
+    client: TestClient, db, teacher, teacher_headers, student_headers, admin_headers
+) -> None:
+    course = create_course(db, teacher, title="Pullik kurs", price=150000)
+    opened = client.post("/api/payments", json={"course_id": course.id}, headers=student_headers)
+    assert opened.status_code == 201
+    assert opened.json()["amount"] == 150000
+
+    repriced = client.patch(
+        f"/api/courses/{course.id}", json={"price": 250000}, headers=teacher_headers
+    )
+    assert repriced.status_code == 200
+
+    reopened = client.post("/api/payments", json={"course_id": course.id}, headers=student_headers)
+    assert reopened.status_code == 200
+    assert reopened.json()["id"] == opened.json()["id"]
+    assert reopened.json()["amount"] == 250000
+
+    confirmed = client.post(
+        f"/api/payments/{opened.json()['id']}/confirm", headers=student_headers
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["status"] == "paid"
+    assert confirmed.json()["amount"] == 250000
+    stats = client.get("/api/admin/stats", headers=admin_headers).json()
+    assert stats["revenue_total"] == 250000
+
+
+def test_confirming_stale_pending_payment_charges_current_price(
+    client: TestClient, db, teacher, teacher_headers, student_headers
+) -> None:
+    course = create_course(db, teacher, title="Pullik kurs", price=150000)
+    opened = client.post("/api/payments", json={"course_id": course.id}, headers=student_headers)
+    assert opened.status_code == 201
+    client.patch(f"/api/courses/{course.id}", json={"price": 250000}, headers=teacher_headers)
+
+    # The checkout page confirms the cached pending row without re-posting.
+    confirmed = client.post(
+        f"/api/payments/{opened.json()['id']}/confirm", headers=student_headers
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["amount"] == 250000
+    mine = client.get("/api/me/payments", headers=student_headers).json()
+    assert [(item["id"], item["amount"], item["status"]) for item in mine] == [
+        (opened.json()["id"], 250000, "paid")
+    ]
+
+
 def test_progress_percent(client: TestClient, db, teacher, student_headers) -> None:
     course = create_course(db, teacher, title="Bepul kurs", price=0, lessons=4)
     ids = _lesson_ids(course)
     assert (
         client.post(f"/api/lessons/{ids[1]}/complete", headers=student_headers).status_code == 403
+    )
+    # Free-preview lessons are viewable, but completion still needs course access.
+    assert (
+        client.post(f"/api/lessons/{ids[0]}/complete", headers=student_headers).status_code == 403
     )
 
     client.post(f"/api/courses/{course.id}/enroll", headers=student_headers)
@@ -217,6 +329,10 @@ def test_reviews_one_per_user_and_update(
     assert updated.status_code == 200
     assert updated.json()["id"] == created.json()["id"]
     assert updated.json()["rating"] == 5
+    detail = client.get("/api/courses/bepul-kurs", headers=student_headers).json()
+    assert detail["my_review"]["id"] == created.json()["id"]
+    assert detail["my_review"]["comment"] == "Zo'r kurs"
+    assert client.get("/api/courses/bepul-kurs").json()["my_review"] is None
 
     assert (
         client.post(

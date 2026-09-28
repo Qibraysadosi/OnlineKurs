@@ -97,6 +97,8 @@ export function FileDropzone({
           type="file"
           accept={accept}
           disabled={isDisabled}
+          tabIndex={-1}
+          aria-hidden="true"
           className="sr-only"
           onChange={(e) => {
             handleFile(e.target.files?.[0]);

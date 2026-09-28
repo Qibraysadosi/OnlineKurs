@@ -19,8 +19,8 @@ export interface ToastOptions {
   duration?: number;
 }
 
-interface ToastContextValue {
-  toasts: ToastItem[];
+/** Imperative API. Its identity never changes, so it is safe in effect dependency arrays. */
+export interface ToastApi {
   show: (kind: ToastKind, title: string, options?: ToastOptions) => number;
   success: (title: string, options?: ToastOptions) => number;
   error: (title: string, options?: ToastOptions) => number;
@@ -28,7 +28,11 @@ interface ToastContextValue {
   dismiss: (id: number) => void;
 }
 
-const ToastContext = createContext<ToastContextValue | null>(null);
+// Two contexts: the API is stable, the list changes with every toast. Only <Toaster>
+// subscribes to the list, so showing a toast never re-renders (or re-runs effects in)
+// the components that triggered it.
+const ToastApiContext = createContext<ToastApi | null>(null);
+const ToastListContext = createContext<ToastItem[] | null>(null);
 
 const MAX_VISIBLE = 5;
 
@@ -47,24 +51,33 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return id;
   }, []);
 
-  const value = useMemo<ToastContextValue>(
+  const api = useMemo<ToastApi>(
     () => ({
-      toasts,
       show,
       success: (title, options) => show("success", title, options),
       error: (title, options) => show("error", title, options),
       info: (title, options) => show("info", title, options),
       dismiss,
     }),
-    [toasts, show, dismiss],
+    [show, dismiss],
   );
 
-  return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
+  return (
+    <ToastApiContext.Provider value={api}>
+      <ToastListContext.Provider value={toasts}>{children}</ToastListContext.Provider>
+    </ToastApiContext.Provider>
+  );
 }
 
-export function useToastContext(): ToastContextValue {
-  const ctx = useContext(ToastContext);
+export function useToastContext(): ToastApi {
+  const ctx = useContext(ToastApiContext);
   if (!ctx) throw new Error("useToast must be used inside <ToastProvider>");
+  return ctx;
+}
+
+function useToastList(): ToastItem[] {
+  const ctx = useContext(ToastListContext);
+  if (!ctx) throw new Error("Toaster must be used inside <ToastProvider>");
   return ctx;
 }
 
@@ -112,7 +125,8 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
 
 /** Renders the stacked toast list (bottom-right). Mounted once in App.tsx. */
 export function Toaster() {
-  const { toasts, dismiss } = useToastContext();
+  const toasts = useToastList();
+  const { dismiss } = useToastContext();
   return (
     <div
       aria-live="polite"

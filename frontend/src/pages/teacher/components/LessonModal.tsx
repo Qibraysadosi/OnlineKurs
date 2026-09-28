@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { ExternalLink, FileText, Link2, Paperclip, PlayCircle, Upload } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { getErrorMessage, lessonsApi } from "@/api";
 import { Alert, Badge, Button, Checkbox, FileDropzone, Input, Modal, Tabs, Textarea } from "@/components/ui";
@@ -41,40 +41,39 @@ export interface LessonModalProps {
   onUpdated: (lesson: LessonOut, sectionId: number) => void;
 }
 
-/** Create / edit a lesson, upload its video (with progress) or set an external URL, and attach a file. */
-export function LessonModal({ open, onClose, sectionId, lesson, onCreated, onUpdated }: LessonModalProps) {
+function initialFormValues(lesson: LessonOut | null): LessonFormValues {
+  if (!lesson) return EMPTY_LESSON_FORM;
+  const values = lessonToFormValues(lesson);
+  // Uploaded files are attached through the video endpoint, never round-tripped as a link.
+  return isUploadedVideo(lesson.video_url) ? { ...values, video_url: "" } : values;
+}
+
+const initialVideoMode = (lesson: LessonOut | null): VideoMode =>
+  !lesson || (lesson.video_url && !isUploadedVideo(lesson.video_url)) ? "link" : "upload";
+
+/**
+ * Create / edit a lesson, upload its video (with progress) or set an external URL, and attach a file.
+ * The form is mounted only while the modal is open, so it always starts from the right default
+ * values; resetting an already-interactive form in an effect used to drop the first keystrokes.
+ */
+export function LessonModal({ open, ...props }: LessonModalProps) {
+  if (!open) return null;
+  return <LessonModalContent {...props} />;
+}
+
+function LessonModalContent({ onClose, sectionId, lesson, onCreated, onUpdated }: Omit<LessonModalProps, "open">) {
   const toast = useToast();
   const formId = useId();
-  const [videoMode, setVideoMode] = useState<VideoMode>("link");
+  const [videoMode, setVideoMode] = useState<VideoMode>(() => initialVideoMode(lesson));
   const [videoProgress, setVideoProgress] = useState<number>();
   const [attachmentProgress, setAttachmentProgress] = useState<number>();
   const [justCreated, setJustCreated] = useState(false);
 
-  const defaultValues = useMemo<LessonFormValues>(() => {
-    if (!lesson) return EMPTY_LESSON_FORM;
-    const values = lessonToFormValues(lesson);
-    return isUploadedVideo(lesson.video_url) ? { ...values, video_url: "" } : values;
-  }, [lesson]);
-
-  const form = useForm<LessonFormValues>({ resolver: zodResolver(lessonFormSchema), defaultValues });
-  const { register, handleSubmit, reset, formState } = form;
+  // `lesson` may change while open (create -> edit, refresh after an upload); the typed values
+  // are kept, only the read-only bits (current video / attachment) follow the prop.
+  const form = useForm<LessonFormValues>({ resolver: zodResolver(lessonFormSchema), defaultValues: initialFormValues(lesson) });
+  const { register, handleSubmit, formState } = form;
   const { errors } = formState;
-
-  // Reset the form when the modal opens or switches to another lesson, but not when the same
-  // lesson is refreshed after an upload (that would wipe unsaved edits).
-  const resetKey = open ? (lesson?.id ?? "new") : null;
-  const lastResetKey = useRef<string | number | null>(null);
-  useEffect(() => {
-    if (resetKey === null) {
-      lastResetKey.current = null;
-      setJustCreated(false);
-      return;
-    }
-    if (lastResetKey.current === resetKey) return;
-    lastResetKey.current = resetKey;
-    reset(defaultValues);
-    setVideoMode(!lesson || (lesson.video_url && !isUploadedVideo(lesson.video_url)) ? "link" : "upload");
-  }, [resetKey, defaultValues, lesson, reset]);
 
   const save = useMutation({
     mutationFn: (values: LessonFormValues) => {
@@ -123,12 +122,12 @@ export function LessonModal({ open, onClose, sectionId, lesson, onCreated, onUpd
 
   return (
     <Modal
-      open={open}
+      open
       onClose={onClose}
       size="lg"
       closeOnOverlay={!busy}
       title={lesson ? "Darsni tahrirlash" : "Yangi dars"}
-      description={lesson ? `${lesson.position + 1}-dars` : "Dars nomi va tavsifini kiriting, keyin video qo'shing."}
+      description={lesson ? `${lesson.position}-dars` : "Dars nomi va tavsifini kiriting, keyin video qo'shing."}
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={busy}>

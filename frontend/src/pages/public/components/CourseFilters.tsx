@@ -54,7 +54,7 @@ function OptionRow({ active, onClick, label, icon, count }: OptionRowProps) {
         </span>
         {icon}
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        {count !== undefined && <span className="text-xs tabular-nums text-slate-400 dark:text-slate-500">{count}</span>}
+        {count !== undefined && <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{count}</span>}
       </button>
     </li>
   );

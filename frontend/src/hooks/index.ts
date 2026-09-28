@@ -6,3 +6,4 @@ export { useQueryParams } from "./useQueryParams";
 export { useMediaQuery } from "./useMediaQuery";
 export { useDocumentTitle } from "./useDocumentTitle";
 export { useLockBodyScroll } from "./useLockBodyScroll";
+export { useDialogBehaviour } from "./useDialogBehaviour";

@@ -141,6 +141,22 @@ def pages_for(total: int, page_size: int) -> int:
     return max(1, ceil(total / page_size)) if total else 0
 
 
+def lessons_count(db: Session, course_id: int) -> int:
+    stmt = (
+        select(func.count(Lesson.id))
+        .join(Section, Section.id == Lesson.section_id)
+        .where(Section.course_id == course_id)
+    )
+    return int(db.execute(stmt).scalar_one())
+
+
+def unpublish_when_empty(db: Session, course: Course) -> None:
+    """A published course must keep at least one lesson; call after deleting lessons/sections."""
+    db.flush()
+    if course.is_published and lessons_count(db, course.id) == 0:
+        course.is_published = False
+
+
 def course_stats(db: Session, course_id: int) -> CourseStats:
     query = courses_with_stats()
     row = db.execute(query.stmt.where(Course.id == course_id)).first()
@@ -240,6 +256,7 @@ def course_detail(db: Session, course: Course, user: User | None) -> CourseDetai
     sections = sorted(course.sections, key=lambda item: (item.position, item.id))
     enrolled = False
     progress_percent: int | None = None
+    my_review: ReviewOut | None = None
     if user is not None:
         stmt = select(Enrollment.id).where(
             Enrollment.user_id == user.id, Enrollment.course_id == course.id
@@ -247,6 +264,13 @@ def course_detail(db: Session, course: Course, user: User | None) -> CourseDetai
         enrolled = db.execute(stmt).scalar_one_or_none() is not None
         if enrolled:
             progress_percent = calculate_course_progress(db, user.id, course.id).progress_percent
+        review_stmt = (
+            select(Review)
+            .where(Review.course_id == course.id, Review.user_id == user.id)
+            .options(selectinload(Review.user))
+        )
+        review = db.execute(review_stmt).scalar_one_or_none()
+        my_review = review_out(review) if review is not None else None
     return CourseDetail(
         **card.model_dump(),
         description=course.description,
@@ -257,6 +281,7 @@ def course_detail(db: Session, course: Course, user: User | None) -> CourseDetai
         has_access=access,
         is_enrolled=enrolled,
         progress_percent=progress_percent,
+        my_review=my_review,
     )
 
 

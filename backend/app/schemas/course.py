@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from app.models.enums import CourseLevel
 from app.schemas.category import CategoryOut
 from app.schemas.common import ORMModel, UTCDatetime
+from app.schemas.review import ReviewOut
 from app.schemas.section import SectionOut
 from app.schemas.user import TeacherMini
 
@@ -36,6 +37,7 @@ class CourseDetail(CourseCard):
     has_access: bool
     is_enrolled: bool
     progress_percent: int | None
+    my_review: ReviewOut | None = None
 
 
 class CourseCreate(BaseModel):

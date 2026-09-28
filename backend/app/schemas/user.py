@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.core.security import validate_password_bytes
 from app.models.enums import UserRole
 from app.schemas.common import ORMModel, UTCDatetime
 
@@ -38,6 +39,8 @@ class UserUpdate(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=72)
     new_password: str = Field(min_length=8, max_length=72)
+
+    _password_bytes = field_validator("current_password", "new_password")(validate_password_bytes)
 
 
 class AdminUserUpdate(BaseModel):

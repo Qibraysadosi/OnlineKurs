@@ -1,34 +1,38 @@
 from typing import Literal
 
 from fastapi import APIRouter, Query, Response, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, delete, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.api.common import (
     COURSE_NOT_FOUND,
+    IdPath,
     bad_request,
+    conflict,
     get_category_or_404,
     get_owned_course_or_403,
     not_found,
 )
 from app.core.deps import DbSession, OptionalUser, TeacherUser
-from app.models import Category, Course, CourseLevel, Lesson, Section
+from app.models import Category, Course, CourseLevel, Payment, PaymentStatus, Section
 from app.schemas.common import Page
 from app.schemas.course import CourseCard, CourseCreate, CourseDetail, CoursePublish, CourseUpdate
+from app.services import storage
 from app.services.access import user_can_see_course
 from app.services.catalog import (
     count_rows,
     course_detail,
     courses_with_stats,
     fetch_cards,
+    lessons_count,
     pages_for,
 )
 from app.services.slugs import generate_course_slug
-from app.services.storage import delete_upload
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
 SortOption = Literal["newest", "popular", "rating", "price_asc", "price_desc"]
+MAX_ID_DIGITS = 10  # 2**31-1 has ten digits; longer strings can only be slugs
 PriceFilter = Literal["free", "paid"]
 
 
@@ -94,23 +98,46 @@ def featured_courses(db: DbSession) -> list[CourseCard]:
     return fetch_cards(db, stmt)
 
 
-@router.get("/{slug_or_id}", response_model=CourseDetail)
-def read_course(slug_or_id: str, db: DbSession, user: OptionalUser) -> CourseDetail:
-    """Course detail by slug (public links) or by numeric id (editor routes)."""
-    key = Course.id == int(slug_or_id) if slug_or_id.isdigit() else Course.slug == slug_or_id
+def _visible_course_detail(
+    db: DbSession, user: OptionalUser, where: ColumnElement[bool], slug: str | None = None
+) -> CourseDetail:
+    """Detail for the course matching `where`; with `slug`, an exact slug match wins."""
     stmt = (
         select(Course)
-        .where(key)
+        .where(where)
         .options(
             selectinload(Course.sections).selectinload(Section.lessons),
             selectinload(Course.teacher),
             selectinload(Course.category),
         )
+        .limit(2)
     )
-    course = db.execute(stmt).scalar_one_or_none()
+    courses = list(db.execute(stmt).scalars().all())
+    course = next((item for item in courses if item.slug == slug), None) or (
+        courses[0] if courses else None
+    )
     if course is None or not user_can_see_course(user, course):
         raise not_found(COURSE_NOT_FOUND)
     return course_detail(db, course, user)
+
+
+@router.get("/id/{course_id}", response_model=CourseDetail)
+def read_course_by_id(course_id: IdPath, db: DbSession, user: OptionalUser) -> CourseDetail:
+    """Course detail by numeric id (editor routes carry the id, not the slug)."""
+    return _visible_course_detail(db, user, Course.id == course_id)
+
+
+@router.get("/{slug}", response_model=CourseDetail)
+def read_course(slug: str, db: DbSession, user: OptionalUser) -> CourseDetail:
+    """Course detail by slug (public links).
+
+    The slug always wins; a bounded all-digit value that matches no slug falls back to the id
+    for older clients (generated slugs are never purely numeric, see services/slugs.py).
+    """
+    where = Course.slug == slug
+    if slug.isdigit() and len(slug) <= MAX_ID_DIGITS:
+        where = or_(where, Course.id == int(slug))
+    return _visible_course_detail(db, user, where, slug=slug)
 
 
 @router.post("", response_model=CourseDetail, status_code=status.HTTP_201_CREATED)
@@ -138,7 +165,7 @@ def create_course(payload: CourseCreate, db: DbSession, user: TeacherUser) -> Co
 
 @router.patch("/{course_id}", response_model=CourseDetail)
 def update_course(
-    course_id: int, payload: CourseUpdate, db: DbSession, user: TeacherUser
+    course_id: IdPath, payload: CourseUpdate, db: DbSession, user: TeacherUser
 ) -> CourseDetail:
     course = get_owned_course_or_403(db, course_id, user)
     changes = payload.model_dump(exclude_unset=True)
@@ -160,28 +187,30 @@ def update_course(
 
 
 @router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
-def delete_course(course_id: int, db: DbSession, user: TeacherUser) -> Response:
+def delete_course(course_id: IdPath, db: DbSession, user: TeacherUser) -> Response:
     course = get_owned_course_or_403(db, course_id, user)
-    cover_url = course.cover_url
+    settled = Payment.status.in_([PaymentStatus.paid, PaymentStatus.refunded])
+    has_settled = db.execute(
+        select(Payment.id).where(Payment.course_id == course.id, settled)
+    ).first()
+    if has_settled is not None:
+        raise conflict("Kursda to'lovlar mavjud; uni o'chirish o'rniga nashrdan oling")
+    files = storage.course_files(course)
+    # Pending/failed payments carry no money; the FK is RESTRICT so they go explicitly.
+    db.execute(delete(Payment).where(Payment.course_id == course.id))
     db.delete(course)
     db.commit()
-    delete_upload(cover_url)
+    storage.delete_uploads(files)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{course_id}/publish", response_model=CourseDetail)
 def publish_course(
-    course_id: int, payload: CoursePublish, db: DbSession, user: TeacherUser
+    course_id: IdPath, payload: CoursePublish, db: DbSession, user: TeacherUser
 ) -> CourseDetail:
     course = get_owned_course_or_403(db, course_id, user)
-    if payload.is_published:
-        lessons_count = db.execute(
-            select(func.count(Lesson.id))
-            .join(Section, Section.id == Lesson.section_id)
-            .where(Section.course_id == course.id)
-        ).scalar_one()
-        if lessons_count == 0:
-            raise bad_request("Nashr qilish uchun kamida bitta dars kerak")
+    if payload.is_published and lessons_count(db, course.id) == 0:
+        raise bad_request("Nashr qilish uchun kamida bitta dars kerak")
     course.is_published = payload.is_published
     db.commit()
     db.refresh(course)

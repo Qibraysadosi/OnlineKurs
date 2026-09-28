@@ -8,6 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_SECRET_KEY = "dev-only-insecure-secret-key-change-me"
+# Publicly known placeholders (in-code default and the values shipped in the .env examples).
+PLACEHOLDER_SECRET_KEYS = frozenset(
+    {DEFAULT_SECRET_KEY, "change-me-in-production", "change-me-to-a-long-random-string", ""}
+)
+MIN_SECRET_KEY_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -44,8 +49,10 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     @property
-    def is_default_secret(self) -> bool:
-        return self.SECRET_KEY == DEFAULT_SECRET_KEY
+    def is_insecure_secret(self) -> bool:
+        """True for the dev default, documented placeholders or anything too short to sign with."""
+        key = self.SECRET_KEY.strip()
+        return key in PLACEHOLDER_SECRET_KEYS or len(key) < MIN_SECRET_KEY_LENGTH
 
     @property
     def is_development(self) -> bool:

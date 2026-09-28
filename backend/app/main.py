@@ -44,6 +44,9 @@ def _field_errors(errors: list[dict]) -> list[tuple[str, str]]:
         ]
         field = ".".join(location) or "so'rov"
         message = VALIDATION_MESSAGES.get(error.get("type", ""), "noto'g'ri qiymat")
+        custom = error.get("ctx", {}).get("error")
+        if error.get("type") == "value_error" and isinstance(custom, ValueError) and str(custom):
+            message = str(custom)  # our own validators already speak Uzbek
         described.append((field, message))
     return described
 
@@ -67,9 +70,14 @@ async def validation_exception_handler(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    if settings.is_default_secret:
+    if settings.is_insecure_secret:
+        if not settings.is_development:
+            raise RuntimeError(
+                "SECRET_KEY is a known placeholder or too short; "
+                "set a random SECRET_KEY of at least 32 characters in production"
+            )
         logger.warning(
-            "SECRET_KEY is the insecure development default; set SECRET_KEY in production"
+            "SECRET_KEY is an insecure development value; set SECRET_KEY in production"
         )
     Base.metadata.create_all(bind=engine)
     ensure_upload_dirs()

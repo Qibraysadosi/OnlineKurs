@@ -25,7 +25,7 @@ export const authApi = {
   uploadAvatar: async (file: File, onProgress?: UploadProgress): Promise<UserPublic> =>
     (await api.post<UserPublic>("/auth/me/avatar", fileForm(file), multipart(onProgress))).data,
 
-  changePassword: async (payload: ChangePasswordPayload): Promise<void> => {
-    await api.post("/auth/me/password", payload);
-  },
+  /** Rotates the password; the old token pair is revoked, so the returned one must replace it. */
+  changePassword: async (payload: ChangePasswordPayload): Promise<Tokens> =>
+    (await api.post<Tokens>("/auth/me/password", payload)).data,
 };

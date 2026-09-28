@@ -103,7 +103,7 @@ function ReviewItem({ review, isMine }: { review: Review; isMine: boolean }) {
             {review.user.full_name}
             {isMine && <span className="ml-1.5 text-xs font-medium text-primary-600 dark:text-primary-300">(siz)</span>}
           </p>
-          <span className="text-xs text-slate-400 dark:text-slate-500">{formatDate(review.created_at)}</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(review.created_at)}</span>
         </div>
         <StarRating value={review.rating} className="mt-1" label={`${review.user.full_name} bahosi`} />
         {review.comment && <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-slate-300">{review.comment}</p>}
@@ -141,7 +141,8 @@ export function ReviewsSection({ course }: ReviewsSectionProps) {
 
   const isTeacher = user?.id === course.teacher.id;
   const canReview = isAuthenticated && course.has_access && !isTeacher;
-  const myReview = user ? (reviewsQuery.data?.items.find((r) => r.user.id === user.id) ?? null) : null;
+  // From the course payload, not the current page of reviews: the user's review may be pages away.
+  const myReview = course.my_review;
 
   return (
     <section id="reviews" aria-labelledby="reviews-title" className="scroll-mt-24 space-y-5">

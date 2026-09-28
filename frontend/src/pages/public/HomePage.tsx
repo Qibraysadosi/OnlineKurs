@@ -16,6 +16,8 @@ import { formatNumber } from "@/lib/utils";
 import type { Category, CourseCard } from "@/types";
 import { CtaBanner, HowItWorks, SectionHeading, Testimonials } from "./components/HomeSections";
 
+const COUNT_PARAMS = { page_size: 1 } as const;
+
 function HeroSearch() {
   const navigate = useNavigate();
   const [value, setValue] = useState("");
@@ -49,7 +51,7 @@ function HeroSearch() {
 
 function StatPill({ icon, value, label }: { icon: ReactNode; value: string; label: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/70 px-4 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
+    <li className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/70 px-4 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-950/60 dark:text-primary-300" aria-hidden="true">
         {icon}
       </span>
@@ -57,11 +59,11 @@ function StatPill({ icon, value, label }: { icon: ReactNode; value: string; labe
         <p className="text-lg font-semibold leading-tight tracking-tight text-slate-900 dark:text-slate-100">{value}</p>
         <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
       </div>
-    </div>
+    </li>
   );
 }
 
-function HeroStats({ categories, featured, loading }: { categories: Category[]; featured: CourseCard[]; loading: boolean }) {
+function HeroStats({ coursesTotal, featured, loading }: { coursesTotal: number; featured: CourseCard[]; loading: boolean }) {
   if (loading) {
     return (
       <div className="mt-8 flex flex-wrap justify-center gap-3" aria-hidden="true">
@@ -69,15 +71,15 @@ function HeroStats({ categories, featured, loading }: { categories: Category[]; 
       </div>
     );
   }
-  const coursesTotal = categories.reduce((sum, c) => sum + c.courses_count, 0);
+  // Students / teachers are derived from the featured list only, so they are shown as a floor ("N+").
   const studentsTotal = featured.reduce((sum, c) => sum + c.students_count, 0);
   const teachersTotal = new Set(featured.map((c) => c.teacher.id)).size;
   return (
-    <dl className="mt-8 flex flex-wrap justify-center gap-3">
-      <StatPill icon={<BookOpen className="h-4 w-4" />} value={`${formatNumber(coursesTotal)}+`} label="kurs" />
+    <ul className="mt-8 flex flex-wrap justify-center gap-3">
+      <StatPill icon={<BookOpen className="h-4 w-4" />} value={formatNumber(coursesTotal)} label="kurs" />
       <StatPill icon={<Users className="h-4 w-4" />} value={`${formatNumber(studentsTotal)}+`} label="talaba" />
-      <StatPill icon={<GraduationCap className="h-4 w-4" />} value={formatNumber(teachersTotal)} label="o'qituvchi" />
-    </dl>
+      <StatPill icon={<GraduationCap className="h-4 w-4" />} value={`${formatNumber(teachersTotal)}+`} label="o'qituvchi" />
+    </ul>
   );
 }
 
@@ -95,16 +97,18 @@ function CategoryChips({ categories, loading }: { categories: Category[]; loadin
   return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       {categories.map((category) => (
-        <li key={category.id}>
+        <li key={category.id} className="min-w-0">
           <Link
             to={`/courses?category=${encodeURIComponent(category.slug)}`}
-            className="ok-card ok-focus group flex h-full flex-col items-start gap-3 p-4 hover:-translate-y-0.5"
+            className="ok-card ok-focus group flex h-full w-full flex-col items-start gap-3 p-4 hover:-translate-y-0.5"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600 transition-colors group-hover:bg-primary-600 group-hover:text-white dark:bg-primary-950/60 dark:text-primary-300 dark:group-hover:bg-primary-500">
               <CategoryIcon name={category.icon} className="h-5 w-5" />
             </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{category.name}</span>
+            <span className="w-full min-w-0">
+              <span className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100" title={category.name}>
+                {category.name}
+              </span>
               <span className="block text-xs text-slate-500 dark:text-slate-400">{category.courses_count} ta kurs</span>
             </span>
           </Link>
@@ -119,6 +123,12 @@ export default function HomePage() {
   const { isAuthenticated } = useAuth();
   const categoriesQuery = useQuery({ queryKey: queryKeys.categories, queryFn: categoriesApi.list });
   const featuredQuery = useQuery({ queryKey: queryKeys.courses.featured, queryFn: coursesApi.featured });
+  // Catalog total counts every published course, including ones without a category.
+  const totalQuery = useQuery({
+    queryKey: queryKeys.courses.list(COUNT_PARAMS),
+    queryFn: () => coursesApi.list(COUNT_PARAMS),
+    select: (page) => page.total,
+  });
 
   const categories = categoriesQuery.data ?? [];
   const featured = featuredQuery.data ?? [];
@@ -142,13 +152,18 @@ export default function HomePage() {
             natijaga erishing.
           </p>
           <HeroSearch />
-          <HeroStats categories={categories} featured={featured} loading={categoriesQuery.isPending || featuredQuery.isPending} />
+          <HeroStats
+            coursesTotal={totalQuery.data ?? categories.reduce((sum, c) => sum + c.courses_count, 0)}
+            featured={featured}
+            loading={featuredQuery.isPending || (totalQuery.isPending && categoriesQuery.isPending)}
+          />
         </Container>
       </section>
 
       <Container className="space-y-16 py-12 sm:space-y-24 sm:py-16">
         <section aria-labelledby="categories-title">
           <SectionHeading
+            id="categories-title"
             eyebrow="Yo'nalishlar"
             title="Nimani o'rganmoqchisiz?"
             description="Har bir yo'nalishda boshlang'ichdan yuqori darajagacha kurslar."
@@ -162,6 +177,7 @@ export default function HomePage() {
 
         <section aria-labelledby="featured-title">
           <SectionHeading
+            id="featured-title"
             eyebrow="Tanlangan"
             title="Mashhur kurslar"
             description="Eng ko'p talaba yozilgan va yuqori baholangan kurslar."

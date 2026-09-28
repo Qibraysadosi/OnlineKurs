@@ -11,6 +11,7 @@ import {
   ConfirmDialog,
   EmptyState,
   IconButton,
+  Skeleton,
   StatCard,
   TBody,
   TD,
@@ -26,8 +27,9 @@ import {
   type TabItem,
 } from "@/components/ui";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useToast } from "@/hooks/useToast";
-import { PAYMENT_STATUS_LABELS, formatDate, formatNumber, formatPrice, paymentStatusColor, paymentStatusLabel } from "@/lib/utils";
+import { PAYMENT_STATUS_LABELS, formatDate, formatNumber, formatPrice, paymentStatusColor, paymentStatusLabel, providerLabel } from "@/lib/utils";
 import type { Payment, PaymentStatus } from "@/types";
 import { StatTilesSkeleton } from "./components/StatTilesSkeleton";
 
@@ -42,12 +44,69 @@ function formatTime(iso: string): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+/** Per-status actions: continue learning, finish or cancel a pending checkout, revisit the course. */
+function PaymentActions({ payment, onCancel }: { payment: Payment; onCancel: (payment: Payment) => void }) {
+  return (
+    <div className="flex items-center justify-end gap-2">
+      {payment.status === "paid" && (
+        <Link to={`/learn/${payment.course.slug}`} className={buttonClassName({ variant: "outline", size: "sm" })}>
+          <PlayCircle className="h-4 w-4" aria-hidden="true" />
+          Darsga o'tish
+        </Link>
+      )}
+      {payment.status === "pending" && (
+        <>
+          <Link to={`/checkout/${payment.course.slug}`} className={buttonClassName({ variant: "primary", size: "sm" })}>
+            <CreditCard className="h-4 w-4" aria-hidden="true" />
+            To'lash
+          </Link>
+          <IconButton
+            aria-label={`${payment.course.title} — to'lovni bekor qilish`}
+            title="Bekor qilish"
+            size="sm"
+            onClick={() => onCancel(payment)}
+            className="text-rose-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50"
+          >
+            <XCircle className="h-4 w-4" aria-hidden="true" />
+          </IconButton>
+        </>
+      )}
+      {(payment.status === "failed" || payment.status === "refunded") && (
+        <Link to={`/courses/${payment.course.slug}`} className={buttonClassName({ variant: "ghost", size: "sm" })}>
+          Kursni ko'rish
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function CourseCell({ payment }: { payment: Payment }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <CourseCover course={payment.course} className="hidden h-11 w-[72px] shrink-0 rounded-lg xl:block" letterClassName="text-lg" />
+      <div className="min-w-0">
+        <Link
+          to={`/courses/${payment.course.slug}`}
+          className="ok-focus block max-w-[220px] truncate rounded font-medium text-slate-900 transition hover:text-primary-600 dark:text-slate-100 dark:hover:text-primary-300"
+        >
+          {payment.course.title}
+        </Link>
+        <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+          {payment.course.teacher.full_name} · №{payment.id}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function PaymentsPage() {
   useDocumentTitle("To'lovlarim");
   const toast = useToast();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<Filter>("all");
   const [cancelTarget, setCancelTarget] = useState<Payment | null>(null);
+  // Five columns cannot fit a phone: stacked cards below md, the table from md up.
+  const isWide = useMediaQuery("(min-width: 768px)");
 
   const payments = useQuery({ queryKey: queryKeys.payments, queryFn: paymentsApi.mine });
 
@@ -109,9 +168,7 @@ export default function PaymentsPage() {
             To'lovlar tarixi
           </h2>
           {all.length > 0 && (
-            <div className="no-scrollbar max-w-full overflow-x-auto">
-              <Tabs tabs={tabs} value={filter} onChange={setFilter} variant="pills" label="Holat bo'yicha filtrlash" />
-            </div>
+            <Tabs tabs={tabs} value={filter} onChange={setFilter} variant="pills" label="Holat bo'yicha filtrlash" className="max-w-full flex-wrap" />
           )}
         </div>
 
@@ -128,6 +185,42 @@ export default function PaymentsPage() {
               </Link>
             }
           />
+        ) : !isWide ? (
+          <ul className="ok-card divide-y divide-slate-200 dark:divide-slate-800" aria-busy={payments.isPending || undefined}>
+            {payments.isPending ? (
+              Array.from({ length: 3 }, (_, i) => (
+                <li key={i} className="space-y-3 p-4" aria-hidden="true">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-5 w-24 rounded-full" />
+                    <Skeleton className="h-5 w-20" />
+                  </div>
+                </li>
+              ))
+            ) : visible.length === 0 ? (
+              <li className="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400">Bu holatda to'lovlar yo'q</li>
+            ) : (
+              visible.map((payment) => (
+                <li key={payment.id} className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <CourseCell payment={payment} />
+                    <span className="shrink-0 font-semibold tabular-nums text-slate-900 dark:text-slate-100">{formatPrice(payment.amount)}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Badge tone={paymentStatusColor(payment.status)} dot>
+                      {paymentStatusLabel(payment.status)}
+                    </Badge>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {formatDate(payment.paid_at ?? payment.created_at)} ·{" "}
+                      {payment.status === "paid" ? providerLabel(payment.provider) : formatTime(payment.created_at)}
+                    </p>
+                  </div>
+                  <PaymentActions payment={payment} onCancel={setCancelTarget} />
+                </li>
+              ))
+            )}
+          </ul>
         ) : (
           <TableContainer>
             <Table className="min-w-[720px]">
@@ -149,20 +242,7 @@ export default function PaymentsPage() {
                   visible.map((payment) => (
                     <TR key={payment.id}>
                       <TD>
-                        <div className="flex items-center gap-3">
-                          <CourseCover course={payment.course} className="hidden h-11 w-[72px] shrink-0 rounded-lg xl:block" letterClassName="text-lg" />
-                          <div className="min-w-0">
-                            <Link
-                              to={`/courses/${payment.course.slug}`}
-                              className="ok-focus block max-w-[220px] truncate rounded font-medium text-slate-900 transition hover:text-primary-600 dark:text-slate-100 dark:hover:text-primary-300"
-                            >
-                              {payment.course.title}
-                            </Link>
-                            <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
-                              {payment.course.teacher.full_name} · №{payment.id}
-                            </p>
-                          </div>
-                        </div>
+                        <CourseCell payment={payment} />
                       </TD>
                       <TD align="right" className="whitespace-nowrap font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                         {formatPrice(payment.amount)}
@@ -175,40 +255,11 @@ export default function PaymentsPage() {
                       <TD className="whitespace-nowrap text-slate-600 dark:text-slate-400">
                         <span className="block">{formatDate(payment.paid_at ?? payment.created_at)}</span>
                         <span className="block text-xs text-slate-400 dark:text-slate-500">
-                          {payment.status === "paid" ? `Test to'lov · ${payment.provider}` : formatTime(payment.created_at)}
+                          {payment.status === "paid" ? providerLabel(payment.provider) : formatTime(payment.created_at)}
                         </span>
                       </TD>
                       <TD align="right">
-                        <div className="flex items-center justify-end gap-2">
-                          {payment.status === "paid" && (
-                            <Link to={`/learn/${payment.course.slug}`} className={buttonClassName({ variant: "outline", size: "sm" })}>
-                              <PlayCircle className="h-4 w-4" aria-hidden="true" />
-                              Darsga o'tish
-                            </Link>
-                          )}
-                          {payment.status === "pending" && (
-                            <>
-                              <Link to={`/checkout/${payment.course.slug}`} className={buttonClassName({ variant: "primary", size: "sm" })}>
-                                <CreditCard className="h-4 w-4" aria-hidden="true" />
-                                To'lash
-                              </Link>
-                              <IconButton
-                                aria-label={`${payment.course.title} — to'lovni bekor qilish`}
-                                title="Bekor qilish"
-                                size="sm"
-                                onClick={() => setCancelTarget(payment)}
-                                className="text-rose-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50"
-                              >
-                                <XCircle className="h-4 w-4" aria-hidden="true" />
-                              </IconButton>
-                            </>
-                          )}
-                          {(payment.status === "failed" || payment.status === "refunded") && (
-                            <Link to={`/courses/${payment.course.slug}`} className={buttonClassName({ variant: "ghost", size: "sm" })}>
-                              Kursni ko'rish
-                            </Link>
-                          )}
-                        </div>
+                        <PaymentActions payment={payment} onCancel={setCancelTarget} />
                       </TD>
                     </TR>
                   ))

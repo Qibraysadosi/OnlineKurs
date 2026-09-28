@@ -27,10 +27,12 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/useToast";
-import { formatCompact, formatNumber, formatPrice, formatRating } from "@/lib/utils";
+import { cn, formatCompact, formatNumber, formatPrice, formatRating } from "@/lib/utils";
 import type { CourseCard } from "@/types";
 
 const TABLE_COLS = 6;
+/** Tighter cells (same as the admin tables) so six columns fit the dashboard content width at 1280px. */
+const CELL = "px-3 first:pl-4 last:pr-4";
 
 function greetingName(fullName: string | undefined): string {
   return fullName?.trim().split(/\s+/)[0] ?? "";
@@ -152,15 +154,23 @@ export default function TeacherDashboardPage() {
           />
         ) : (
           <TableContainer>
-            <Table className="min-w-[800px]">
+            <Table className="min-w-[760px]">
               <THead>
                 <TR>
-                  <TH>Kurs</TH>
-                  <TH align="right">Talabalar</TH>
-                  <TH>Baho</TH>
-                  <TH align="right">Narx</TH>
-                  <TH align="center">Nashr</TH>
-                  <TH align="right">Amallar</TH>
+                  <TH className={CELL}>Kurs</TH>
+                  <TH align="right" className={CELL}>
+                    Talabalar
+                  </TH>
+                  <TH className={CELL}>Baho</TH>
+                  <TH align="right" className={CELL}>
+                    Narx
+                  </TH>
+                  <TH align="center" className={CELL}>
+                    Nashr
+                  </TH>
+                  <TH align="right" className={CELL}>
+                    Amallar
+                  </TH>
                 </TR>
               </THead>
               <TBody>
@@ -169,13 +179,13 @@ export default function TeacherDashboardPage() {
                 ) : (
                   courses.data.map((course) => (
                     <TR key={course.id}>
-                      <TD>
+                      <TD className={CELL}>
                         <div className="flex items-center gap-3">
                           <CourseCover course={course} className="h-11 w-[72px] shrink-0 rounded-lg" letterClassName="text-lg" />
                           <div className="min-w-0">
                             <Link
                               to={`/teacher/courses/${course.id}/edit`}
-                                className="ok-focus block max-w-[240px] truncate rounded font-medium text-slate-900 transition hover:text-primary-600 dark:text-slate-100 dark:hover:text-primary-300"
+                              className="ok-focus block max-w-[220px] truncate rounded font-medium text-slate-900 transition hover:text-primary-600 dark:text-slate-100 dark:hover:text-primary-300"
                             >
                               {course.title}
                             </Link>
@@ -196,16 +206,16 @@ export default function TeacherDashboardPage() {
                           </div>
                         </div>
                       </TD>
-                      <TD align="right" className="tabular-nums">
+                      <TD align="right" className={cn(CELL, "tabular-nums")}>
                         {formatNumber(course.students_count)}
                       </TD>
-                      <TD>
+                      <TD className={cn(CELL, "whitespace-nowrap")}>
                         <RatingStars value={course.rating_avg} showValue count={course.reviews_count} />
                       </TD>
-                      <TD align="right" className="whitespace-nowrap">
+                      <TD align="right" className={cn(CELL, "whitespace-nowrap")}>
                         <PriceTag price={course.price} size="sm" />
                       </TD>
-                      <TD align="center">
+                      <TD align="center" className={CELL}>
                         <div className="flex justify-center">
                           <Switch
                             size="sm"
@@ -216,7 +226,7 @@ export default function TeacherDashboardPage() {
                           />
                         </div>
                       </TD>
-                      <TD align="right">
+                      <TD align="right" className={CELL}>
                         <div className="flex items-center justify-end gap-0.5">
                           <Link
                             to={`/teacher/courses/${course.id}/edit`}

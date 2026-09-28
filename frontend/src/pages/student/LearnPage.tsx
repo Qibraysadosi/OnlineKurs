@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { ArrowLeft, BookOpen, ListVideo, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { coursesApi, getErrorMessage, lessonsApi, queryKeys } from "@/api";
 import { ErrorFallback } from "@/components/guards";
 import { EmptyState, IconButton, ProgressBar, buttonClassName } from "@/components/ui";
+import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useLockBodyScroll } from "@/hooks/useLockBodyScroll";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -54,7 +55,11 @@ export default function LearnPage() {
   const { getNumber, set } = useQueryParams();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  useLockBodyScroll(drawerOpen && !isDesktop);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const closeDrawer = () => setDrawerOpen(false);
+  const drawerVisible = drawerOpen && !isDesktop;
+  useLockBodyScroll(drawerVisible);
+  useDialogBehaviour(drawerVisible, closeDrawer, drawerRef);
 
   const requestedLessonId = getNumber("lesson", 0);
 
@@ -82,16 +87,20 @@ export default function LearnPage() {
   useDocumentTitle(current ? current.lesson.title : (course?.title ?? "Dars"));
 
   // Enforce access on the client: the API already hides video URLs, this just gives a friendly redirect.
+  // Only settled data counts (a refetch right after enrolling still carries the stale anonymous
+  // payload) and the ref makes sure we redirect - and toast - exactly once.
+  const redirected = useRef(false);
   useEffect(() => {
-    if (course && !course.has_access) {
+    if (course && !course.has_access && !courseQuery.isFetching && !redirected.current) {
+      redirected.current = true;
       toast.error(NO_ACCESS_MESSAGE);
       navigate(`/courses/${course.slug}`, { replace: true });
     }
-  }, [course, navigate, toast]);
+  }, [course, courseQuery.isFetching, navigate, toast]);
 
   // Pin the resolved default lesson into the URL so completing it does not silently jump to the next one.
   useEffect(() => {
-    if (course && current && requestedLessonId !== current.lesson.id) {
+    if (course && course.has_access && current && requestedLessonId !== current.lesson.id) {
       set("lesson", current.lesson.id, { replace: true });
     }
   }, [course, current, requestedLessonId, set]);
@@ -209,13 +218,17 @@ export default function LearnPage() {
         )}
       </div>
 
-      {!isDesktop && drawerOpen && (
+      {drawerVisible && (
         <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Kurs dasturi">
-          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
-          <div className="absolute inset-y-0 right-0 flex w-[90%] max-w-sm flex-col bg-white shadow-xl animate-in-right dark:bg-slate-950">
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={closeDrawer} aria-hidden="true" />
+          <div
+            ref={drawerRef}
+            tabIndex={-1}
+            className="ok-focus absolute inset-y-0 right-0 flex w-[90%] max-w-sm flex-col bg-white shadow-xl animate-in-right dark:bg-slate-950"
+          >
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Darslar</p>
-              <IconButton aria-label="Yopish" size="sm" onClick={() => setDrawerOpen(false)}>
+              <IconButton aria-label="Yopish" size="sm" onClick={closeDrawer}>
                 <X className="h-5 w-5" aria-hidden="true" />
               </IconButton>
             </div>

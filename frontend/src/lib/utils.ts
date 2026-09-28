@@ -136,6 +136,15 @@ export function paymentStatusLabel(status: PaymentStatus): string {
   return PAYMENT_STATUS_LABELS[status] ?? status;
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  mock: "Test to'lov",
+};
+
+/** Backend payment provider code -> user-facing label ("mock" -> "Test to'lov"). */
+export function providerLabel(provider: string): string {
+  return PROVIDER_LABELS[provider] ?? provider;
+}
+
 export type BadgeTone = "neutral" | "primary" | "success" | "warning" | "danger" | "info";
 
 /** Maps a payment status to the `Badge` tone to render it with. */

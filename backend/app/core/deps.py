@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.core.security import decode_token
+from app.core.security import decode_token, token_version
 from app.db.session import get_session
 from app.models import User, UserRole
 
@@ -21,18 +21,25 @@ def _resolve_user(db: Session, credentials: HTTPAuthorizationCredentials | None)
     """Return the active user for a bearer token, None when no token is given."""
     if credentials is None or not credentials.credentials:
         return None
-    user_id = decode_token(credentials.credentials, "access")
-    if user_id is None:
+    claims = decode_token(credentials.credentials, "access")
+    if claims is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token yaroqsiz yoki muddati tugagan",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = db.get(User, user_id)
+    user = db.get(User, claims.user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Foydalanuvchi topilmadi",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if claims.version != token_version(user.password_hash):
+        # Password changed after this token was issued: the old session is revoked.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token yaroqsiz yoki muddati tugagan",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:

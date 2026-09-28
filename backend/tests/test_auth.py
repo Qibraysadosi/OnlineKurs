@@ -96,11 +96,61 @@ def test_update_profile_and_password(client: TestClient, student_headers: dict[s
         json={"current_password": PASSWORD, "new_password": "YangiParol123"},
         headers=student_headers,
     )
-    assert ok.status_code == 204
+    assert ok.status_code == 200
+    issued = ok.json()
+    assert issued["token_type"] == "bearer"
+    assert issued["user"]["email"] == "student@test.uz"
+    # The caller stays signed in with the pair returned by the change itself.
+    assert client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {issued['access_token']}"}
+    ).status_code == 200
+    assert (
+        client.post("/api/auth/refresh", json={"refresh_token": issued["refresh_token"]}).status_code
+        == 200
+    )
     relogin = client.post(
         "/api/auth/login", json={"email": "student@test.uz", "password": "YangiParol123"}
     )
     assert relogin.status_code == 200
+    # Sessions issued before the password change are revoked.
+    assert client.get("/api/auth/me", headers=student_headers).status_code == 401
+    fresh = relogin.json()
+    assert client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {fresh['access_token']}"}
+    ).status_code == 200
+
+
+def test_password_change_revokes_old_refresh_token(client: TestClient, student) -> None:
+    tokens = client.post(
+        "/api/auth/login", json={"email": student.email, "password": PASSWORD}
+    ).json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    changed = client.post(
+        "/api/auth/me/password",
+        json={"current_password": PASSWORD, "new_password": "YangiParol123"},
+        headers=headers,
+    )
+    assert changed.status_code == 200
+    stale = client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert stale.status_code == 401
+    renewed = client.post(
+        "/api/auth/refresh", json={"refresh_token": changed.json()["refresh_token"]}
+    )
+    assert renewed.status_code == 200
+
+
+def test_password_length_is_validated_in_bytes(client: TestClient) -> None:
+    too_long = client.post(
+        "/api/auth/register",
+        json={"full_name": "Kirill Test", "email": "kirill@test.uz", "password": "ё" * 40},
+    )
+    assert too_long.status_code == 422
+    assert "72 bayt" in too_long.json()["detail"]
+    fits = client.post(
+        "/api/auth/register",
+        json={"full_name": "Kirill Test", "email": "kirill@test.uz", "password": "ё" * 36},
+    )
+    assert fits.status_code == 201
 
 
 def test_avatar_upload_rejects_non_image(

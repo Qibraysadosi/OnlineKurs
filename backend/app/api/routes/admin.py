@@ -1,10 +1,10 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Query, Response, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from app.api.common import bad_request, get_payment_or_404, get_user_or_404
+from app.api.common import IdPath, bad_request, conflict, get_payment_or_404, get_user_or_404
 from app.core.deps import AdminUser, DbSession
 from app.db.base import utcnow
 from app.models import Course, Enrollment, Payment, PaymentStatus, User, UserRole
@@ -21,6 +21,7 @@ from app.services.catalog import (
     payment_out,
     payments_out,
 )
+from app.services import storage
 from app.services.enrollments import ensure_enrollment, remove_enrollment
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -133,7 +134,7 @@ def list_users(
 
 @router.patch("/users/{user_id}", response_model=UserPublic)
 def update_user(
-    user_id: int, payload: AdminUserUpdate, db: DbSession, admin: AdminUser
+    user_id: IdPath, payload: AdminUserUpdate, db: DbSession, admin: AdminUser
 ) -> UserPublic:
     user = get_user_or_404(db, user_id)
     changes = payload.model_dump(exclude_unset=True)
@@ -151,12 +152,23 @@ def update_user(
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
-def delete_user(user_id: int, db: DbSession, admin: AdminUser) -> Response:
+def delete_user(user_id: IdPath, db: DbSession, admin: AdminUser) -> Response:
     user = get_user_or_404(db, user_id)
     if user.id == admin.id:
         raise bad_request("O'zingizni o'chira olmaysiz")
+    # Settled payments (the user's own, or on courses they teach) are revenue history.
+    settled = Payment.status.in_([PaymentStatus.paid, PaymentStatus.refunded])
+    owned = select(Course.id).where(Course.teacher_id == user.id)
+    involved = or_(Payment.user_id == user.id, Payment.course_id.in_(owned))
+    if db.execute(select(Payment.id).where(settled, involved)).first() is not None:
+        raise conflict(
+            "Foydalanuvchi to'lovlar bilan bog'liq; uni o'chirish o'rniga faolsizlantiring"
+        )
+    files = storage.user_files(user)
+    db.execute(delete(Payment).where(involved))
     db.delete(user)
     db.commit()
+    storage.delete_uploads(files)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -211,7 +223,7 @@ def list_payments(
 
 @router.patch("/payments/{payment_id}", response_model=PaymentOut)
 def update_payment(
-    payment_id: int, payload: PaymentStatusUpdate, db: DbSession, _admin: AdminUser
+    payment_id: IdPath, payload: PaymentStatusUpdate, db: DbSession, _admin: AdminUser
 ) -> PaymentOut:
     payment = get_payment_or_404(db, payment_id)
     payment.status = payload.status
@@ -220,7 +232,16 @@ def update_payment(
             payment.paid_at = utcnow()
         ensure_enrollment(db, payment.user_id, payment.course_id)
     elif payload.status == PaymentStatus.refunded:
-        remove_enrollment(db, payment.user_id, payment.course_id)
+        other_paid = db.execute(
+            select(Payment.id).where(
+                Payment.user_id == payment.user_id,
+                Payment.course_id == payment.course_id,
+                Payment.id != payment.id,
+                Payment.status == PaymentStatus.paid,
+            )
+        ).first()
+        if other_paid is None:
+            remove_enrollment(db, payment.user_id, payment.course_id)
     db.commit()
     db.refresh(payment)
     return payment_out(db, payment)

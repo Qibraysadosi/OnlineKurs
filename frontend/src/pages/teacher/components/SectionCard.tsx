@@ -53,7 +53,8 @@ export function SectionCard({
 
   return (
     <article className="ok-card overflow-hidden">
-      <header className="flex items-start gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:px-5">
+      {/* Below sm the action buttons drop to their own right-aligned row so the title is not squeezed. */}
+      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:flex-nowrap sm:px-5">
         <span
           className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-sm font-semibold text-primary-700 dark:bg-primary-950/60 dark:text-primary-300"
           aria-hidden="true"
@@ -91,7 +92,7 @@ export function SectionCard({
           )}
         </div>
         {!editing && (
-          <div className="flex shrink-0 items-center gap-0.5">
+          <div className="flex w-full shrink-0 items-center justify-end gap-0.5 sm:w-auto">
             <IconButton aria-label="Bo'limni yuqoriga" size="sm" disabled={busy || index === 0} onClick={() => onMove(-1)}>
               <ArrowUp className="h-4 w-4" aria-hidden="true" />
             </IconButton>
@@ -111,7 +112,10 @@ export function SectionCard({
       {section.lessons.length > 0 ? (
         <ol className="divide-y divide-slate-200 dark:divide-slate-800">
           {section.lessons.map((lesson, lessonIndex) => (
-            <li key={lesson.id} className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40 sm:px-5">
+            <li
+              key={lesson.id}
+              className="group flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40 sm:flex-nowrap sm:px-5"
+            >
               <GripVertical className="hidden h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600 sm:block" aria-hidden="true" />
               <span className="w-6 shrink-0 text-right text-xs tabular-nums text-slate-400">{lessonIndex + 1}.</span>
               <button
@@ -142,7 +146,7 @@ export function SectionCard({
                   {lesson.is_free_preview && <Badge tone="success">Bepul ko'rish</Badge>}
                 </span>
               </button>
-              <div className="flex shrink-0 items-center gap-0.5">
+              <div className="flex w-full shrink-0 items-center justify-end gap-0.5 sm:w-auto">
                 <IconButton aria-label="Darsni yuqoriga" size="sm" disabled={busy || lessonIndex === 0} onClick={() => onMoveLesson(lesson, -1)}>
                   <ArrowUp className="h-4 w-4" aria-hidden="true" />
                 </IconButton>
@@ -154,7 +158,7 @@ export function SectionCard({
                 >
                   <ArrowDown className="h-4 w-4" aria-hidden="true" />
                 </IconButton>
-                <IconButton aria-label="Darsni tahrirlash" size="sm" onClick={() => onEditLesson(lesson)} className="hidden sm:inline-flex">
+                <IconButton aria-label="Darsni tahrirlash" size="sm" onClick={() => onEditLesson(lesson)}>
                   <Pencil className="h-4 w-4" aria-hidden="true" />
                 </IconButton>
                 <IconButton

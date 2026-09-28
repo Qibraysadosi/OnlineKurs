@@ -58,6 +58,4 @@ class Course(PkCreatedMixin, Base):
     reviews: Mapped[list["Review"]] = relationship(
         back_populates="course", cascade="all, delete-orphan", passive_deletes=True
     )
-    payments: Mapped[list["Payment"]] = relationship(
-        back_populates="course", cascade="all, delete-orphan", passive_deletes=True
-    )
+    payments: Mapped[list["Payment"]] = relationship(back_populates="course", passive_deletes=True)

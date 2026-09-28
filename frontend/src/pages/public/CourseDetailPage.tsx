@@ -225,11 +225,13 @@ export default function CourseDetailPage() {
 
   const enroll = useMutation({
     mutationFn: (courseId: number) => coursesApi.enroll(courseId),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Kursga yozildingiz", { description: "Birinchi darsni hoziroq boshlashingiz mumkin." });
-      queryClient.invalidateQueries({ queryKey: queryKeys.course(slug) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments });
-      queryClient.invalidateQueries({ queryKey: queryKeys.payments });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.enrollments });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.payments });
+      // LearnPage reads the same cache entry: wait for has_access=true before handing off,
+      // otherwise it would see the stale anonymous payload and bounce back here.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.course(slug) });
       navigate(`/learn/${slug}`);
     },
     onError: (err) => toast.error(getErrorMessage(err)),

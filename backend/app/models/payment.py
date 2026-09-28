@@ -18,8 +18,10 @@ class Payment(PkCreatedMixin, Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # RESTRICT: settled payments are the revenue ledger and must outlive course deletion
+    # attempts (the routes refuse to delete a course/user that has paid/refunded payments).
     course_id: Mapped[int] = mapped_column(
-        ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("courses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[PaymentStatus] = mapped_column(

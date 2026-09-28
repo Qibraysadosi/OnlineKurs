@@ -1,10 +1,12 @@
 import { PanelLeft, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/Button";
 import { useAuth } from "@/hooks/useAuth";
+import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
 import { useLockBodyScroll } from "@/hooks/useLockBodyScroll";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { roleLabel } from "@/lib/utils";
 import { Container } from "./Container";
 import { Footer } from "./Footer";
@@ -19,13 +21,24 @@ import { navGroupsForRole } from "./navigation";
 export function DashboardLayout() {
   const { user, role } = useAuth();
   const location = useLocation();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  // The sidebar is static from lg up; the drawer must release the body lock and focus trap
+  // when the viewport grows past that breakpoint while it is open.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const drawerOpen = menuOpen && !isDesktop;
+  const closeDrawer = () => setMenuOpen(false);
   useLockBodyScroll(drawerOpen);
+  useDialogBehaviour(drawerOpen, closeDrawer, drawerRef);
   const groups = navGroupsForRole(role);
 
   useEffect(() => {
-    setDrawerOpen(false);
+    setMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (isDesktop) setMenuOpen(false);
+  }, [isDesktop]);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -46,11 +59,11 @@ export function DashboardLayout() {
           </div>
         </aside>
 
-        <div className="min-w-0 flex-1">
+        <main className="min-w-0 flex-1">
           <div className="mb-4 lg:hidden">
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
+              onClick={() => setMenuOpen(true)}
               aria-expanded={drawerOpen}
               className="ok-focus inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
@@ -61,13 +74,17 @@ export function DashboardLayout() {
           <div className="animate-in">
             <Outlet />
           </div>
-        </div>
+        </main>
       </Container>
 
       {drawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Boshqaruv menyusi">
-          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
-          <div className="absolute inset-y-0 left-0 flex w-[85%] max-w-xs flex-col overflow-y-auto bg-white p-4 shadow-xl animate-in-left dark:bg-slate-950">
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={closeDrawer} aria-hidden="true" />
+          <div
+            ref={drawerRef}
+            tabIndex={-1}
+            className="ok-focus absolute inset-y-0 left-0 flex w-[85%] max-w-xs flex-col overflow-y-auto bg-white p-4 shadow-xl animate-in-left dark:bg-slate-950"
+          >
             <div className="mb-4 flex items-center justify-between">
               {user && (
                 <div className="flex min-w-0 items-center gap-3">
@@ -78,11 +95,11 @@ export function DashboardLayout() {
                   </div>
                 </div>
               )}
-              <IconButton aria-label="Yopish" size="sm" onClick={() => setDrawerOpen(false)}>
+              <IconButton aria-label="Yopish" size="sm" onClick={closeDrawer}>
                 <X className="h-5 w-5" aria-hidden="true" />
               </IconButton>
             </div>
-            <Sidebar groups={groups} onNavigate={() => setDrawerOpen(false)} />
+            <Sidebar groups={groups} onNavigate={closeDrawer} />
           </div>
         </div>
       )}

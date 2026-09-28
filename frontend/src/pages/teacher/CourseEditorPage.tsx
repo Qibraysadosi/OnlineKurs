@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, FileText, ListTree, Rocket } from "lucide-react";
+import { ExternalLink, FileText, ListTree, Lock, Rocket } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { coursesApi, getErrorMessage, queryKeys } from "@/api";
 import { ErrorFallback } from "@/components/guards";
 import { PageHeader } from "@/components/layout";
-import { Badge, Card, Skeleton, SkeletonText, Tabs, buttonClassName, type TabItem } from "@/components/ui";
+import { Badge, Card, EmptyState, Skeleton, SkeletonText, Tabs, buttonClassName, type TabItem } from "@/components/ui";
+import { useAuth } from "@/hooks/useAuth";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { useToast } from "@/hooks/useToast";
@@ -70,6 +71,7 @@ function EditCourse({ courseId }: { courseId: number }) {
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { user, isAdmin } = useAuth();
   const { get, set } = useQueryParams();
   const { course, isPending, error, refetch, applyCourse, patchSections } = useEditorCourse(courseId);
   useDocumentTitle(course ? `${course.title} — tahrirlash` : "Kursni tahrirlash");
@@ -102,6 +104,24 @@ function EditCourse({ courseId }: { courseId: number }) {
 
   if (isPending) return <EditorSkeleton />;
   if (error || !course) return <ErrorFallback message={error ? getErrorMessage(error) : undefined} onRetry={refetch} />;
+  // The public detail endpoint serves any published course; only its teacher (or an admin) may edit it.
+  if (!isAdmin && course.teacher.id !== user?.id) {
+    return (
+      <div className="flex justify-center py-12 animate-in">
+        <EmptyState
+          icon={<Lock className="h-7 w-7" aria-hidden="true" />}
+          title="Bu kursni tahrirlash huquqingiz yo'q"
+          description={`"${course.title}" boshqa o'qituvchiga tegishli. Faqat o'z kurslaringizni tahrirlashingiz mumkin.`}
+          action={
+            <Link to="/teacher" className={buttonClassName()}>
+              O'qituvchi paneliga qaytish
+            </Link>
+          }
+          className="w-full max-w-lg"
+        />
+      </div>
+    );
+  }
 
   const lessonsCount = course.sections.reduce((sum, section) => sum + section.lessons.length, 0);
   const tabsWithCounts = TABS.map((item) => (item.value === "curriculum" ? { ...item, count: lessonsCount } : item));

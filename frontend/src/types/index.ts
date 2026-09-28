@@ -92,6 +92,8 @@ export interface CourseDetail extends CourseCard {
   has_access: boolean;
   is_enrolled: boolean;
   progress_percent: number | null;
+  /** The requester's own review (null when anonymous or not reviewed yet) */
+  my_review: Review | null;
 }
 
 export interface Enrollment {

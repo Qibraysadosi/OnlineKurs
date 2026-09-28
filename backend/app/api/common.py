@@ -1,6 +1,8 @@
 """Lookup helpers shared by route modules; they raise the API's Uzbek HTTP errors."""
 
-from fastapi import HTTPException, status
+from typing import Annotated
+
+from fastapi import HTTPException, Path, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import Category, Course, Lesson, Payment, Section, User
@@ -13,6 +15,10 @@ CATEGORY_NOT_FOUND = "Kategoriya topilmadi"
 USER_NOT_FOUND = "Foydalanuvchi topilmadi"
 PAYMENT_NOT_FOUND = "To'lov topilmadi"
 NOT_COURSE_OWNER = "Bu kursni tahrirlash huquqingiz yo'q"
+
+# Bounded numeric path parameter: ids beyond the SQL integer range would otherwise blow up
+# in the database driver (OverflowError -> 500) instead of answering 404/422.
+IdPath = Annotated[int, Path(ge=1, le=2_147_483_647)]
 
 
 def not_found(detail: str) -> HTTPException:

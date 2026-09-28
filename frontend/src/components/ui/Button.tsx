@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "./Spinner";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "gradient";
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "gradient" | "inverse" | "inverseOutline";
 export type ButtonSize = "xs" | "sm" | "md" | "lg";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -26,6 +26,9 @@ export const buttonVariants: Record<ButtonVariant, string> = {
     "border border-slate-300 bg-transparent text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-800",
   ghost: "bg-transparent text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800",
   danger: "bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:bg-rose-800",
+  // For use on brand-coloured surfaces (CTA banner); intentionally theme-independent.
+  inverse: "bg-white text-primary-700 shadow-sm hover:bg-white/90 active:bg-white/80",
+  inverseOutline: "border border-white/40 bg-white/10 text-white hover:bg-white/20 active:bg-white/30",
 };
 
 export const buttonSizes: Record<ButtonSize, string> = {

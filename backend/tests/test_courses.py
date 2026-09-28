@@ -223,14 +223,60 @@ def test_unpublished_visible_to_owner_and_admin(
 
 def test_course_detail_by_id(client: TestClient, db, teacher, teacher_headers) -> None:
     course = create_course(db, teacher, title="Raqamli kurs")
-    by_id = client.get(f"/api/courses/{course.id}")
+    by_id = client.get(f"/api/courses/id/{course.id}")
     assert by_id.status_code == 200
     assert by_id.json()["slug"] == "raqamli-kurs"
     assert by_id.json() == client.get("/api/courses/raqamli-kurs").json()
-    assert client.get(f"/api/courses/{course.id + 1000}").status_code == 404
+    assert client.get(f"/api/courses/id/{course.id + 1000}").status_code == 404
     draft = create_course(db, teacher, title="Qoralama id", published=False)
-    assert client.get(f"/api/courses/{draft.id}").status_code == 404
-    assert client.get(f"/api/courses/{draft.id}", headers=teacher_headers).status_code == 200
+    assert client.get(f"/api/courses/id/{draft.id}").status_code == 404
+    assert client.get(f"/api/courses/id/{draft.id}", headers=teacher_headers).status_code == 200
+    # Older clients may still pass a numeric id to the slug route; oversized ids never reach
+    # the database driver.
+    assert client.get(f"/api/courses/{course.id}").json()["slug"] == "raqamli-kurs"
+    huge = "9" * 25
+    assert client.get(f"/api/courses/id/{huge}").status_code == 422
+    assert client.get(f"/api/courses/{huge}").status_code == 404
+    assert client.get(f"/api/lessons/{huge}").status_code == 422
+    assert client.get(f"/api/courses/{huge}/progress", headers=teacher_headers).status_code == 422
+
+
+def test_numeric_and_reserved_titles_get_reachable_slugs(
+    client: TestClient, teacher_headers: dict[str, str]
+) -> None:
+    numeric = client.post(
+        "/api/courses", json={**COURSE_BODY, "title": "2024"}, headers=teacher_headers
+    )
+    assert numeric.status_code == 201
+    assert numeric.json()["slug"] == "kurs-2024"
+    assert client.get("/api/courses/kurs-2024", headers=teacher_headers).status_code == 200
+    reserved = client.post(
+        "/api/courses", json={**COURSE_BODY, "title": "Featured"}, headers=teacher_headers
+    )
+    assert reserved.json()["slug"] == "kurs-featured"
+    assert isinstance(client.get("/api/courses/featured").json(), list)
+
+
+def test_deleting_last_lesson_unpublishes_course(
+    client: TestClient, teacher_headers: dict[str, str]
+) -> None:
+    course_id = client.post("/api/courses", json=COURSE_BODY, headers=teacher_headers).json()["id"]
+    section_id = client.post(
+        f"/api/courses/{course_id}/sections", json={"title": "Kirish"}, headers=teacher_headers
+    ).json()["id"]
+    lesson_id = client.post(
+        f"/api/sections/{section_id}/lessons", json={"title": "Dars"}, headers=teacher_headers
+    ).json()["id"]
+    client.post(
+        f"/api/courses/{course_id}/publish", json={"is_published": True}, headers=teacher_headers
+    )
+    assert client.get("/api/courses/python-asoslari").status_code == 200
+
+    assert client.delete(f"/api/lessons/{lesson_id}", headers=teacher_headers).status_code == 204
+    assert client.get("/api/courses/python-asoslari").status_code == 404
+    draft = client.get("/api/courses/python-asoslari", headers=teacher_headers).json()
+    assert draft["is_published"] is False
+    assert draft["lessons_count"] == 0
 
 
 def test_category_filter_and_admin_crud(
@@ -329,3 +375,58 @@ def test_video_and_attachment_upload(
     assert attachment.status_code == 200
     assert attachment.json()["attachment_name"] == "Slaydlar.pdf"
     assert attachment.json()["attachment_url"].startswith("http://testserver/uploads/attachments/")
+
+    video_path = video.json()["video_url"].replace("http://testserver", "")
+    attachment_path = attachment.json()["attachment_url"].replace("http://testserver", "")
+    assert client.get(video_path).status_code == 200
+    assert client.delete(f"/api/courses/{course.id}", headers=teacher_headers).status_code == 204
+    assert client.get(video_path).status_code == 404
+    assert client.get(attachment_path).status_code == 404
+
+
+def test_teacher_cannot_point_lesson_at_foreign_upload(
+    client: TestClient, db, teacher, teacher_headers: dict[str, str]
+) -> None:
+    from app.models import UserRole
+    from tests.conftest import create_user, login
+
+    victim = create_course(db, teacher, title="Jabrlanuvchi kurs")
+    victim_lesson = victim.sections[0].lessons[0].id
+    uploaded = client.post(
+        f"/api/lessons/{victim_lesson}/video",
+        files={"file": ("clip.mp4", b"0" * 10, "video/mp4")},
+        headers=teacher_headers,
+    ).json()["video_url"]
+    video_path = uploaded.replace("http://testserver", "")
+
+    other = create_user(db, "other-teacher@test.uz", UserRole.teacher, "Boshqa ustoz")
+    other_headers = login(client, other.email)
+    mine = create_course(db, other, title="Mening kursim")
+    my_section = mine.sections[0].id
+    my_lesson = mine.sections[0].lessons[0].id
+
+    planted = client.patch(
+        f"/api/lessons/{my_lesson}", json={"video_url": uploaded}, headers=other_headers
+    )
+    assert planted.status_code == 400
+    created = client.post(
+        f"/api/sections/{my_section}/lessons",
+        json={"title": "Dars", "video_url": uploaded},
+        headers=other_headers,
+    )
+    assert created.status_code == 400
+    directory = client.patch(
+        f"/api/lessons/{my_lesson}",
+        json={"video_url": "http://testserver/uploads/videos/.."},
+        headers=other_headers,
+    )
+    assert directory.status_code == 400
+    assert client.get(video_path).status_code == 200
+
+    external = client.patch(
+        f"/api/lessons/{my_lesson}",
+        json={"video_url": "https://example.com/other.mp4"},
+        headers=other_headers,
+    )
+    assert external.status_code == 200
+    assert client.get(video_path).status_code == 200

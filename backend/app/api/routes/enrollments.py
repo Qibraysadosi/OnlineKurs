@@ -2,7 +2,7 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.api.common import conflict, get_visible_course_or_404
+from app.api.common import IdPath, conflict, get_visible_course_or_404
 from app.core.deps import CurrentUser, DbSession
 from app.models import Enrollment, Lesson, LessonProgress, Section
 from app.schemas.enrollment import EnrollmentOut
@@ -46,7 +46,7 @@ def my_enrollments(db: DbSession, user: CurrentUser) -> list[EnrollmentOut]:
     "/courses/{course_id}/enroll", response_model=EnrollmentOut, status_code=status.HTTP_201_CREATED
 )
 def enroll_free(
-    course_id: int, db: DbSession, user: CurrentUser, response: Response
+    course_id: IdPath, db: DbSession, user: CurrentUser, response: Response
 ) -> EnrollmentOut:
     course = get_visible_course_or_404(db, course_id, user)
     if course.price > 0:

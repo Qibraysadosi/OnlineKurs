@@ -65,12 +65,13 @@ export default function CheckoutPage() {
       await sleep(MOCK_PROCESSING_MS);
       return paymentsApi.confirm(payment.id);
     },
-    onSuccess: (payment) => {
-      setPaid(payment);
+    onSuccess: async (payment) => {
       toast.success("To'lov qabul qilindi", { description: "Kurs darslari siz uchun ochildi." });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.course(slug) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.enrollments });
       void queryClient.invalidateQueries({ queryKey: queryKeys.payments });
+      // The "Darsni boshlash" link relies on the cached course carrying has_access=true.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.course(slug) });
+      setPaid(payment);
     },
     onError: (err) => {
       toast.error(getErrorMessage(err));
