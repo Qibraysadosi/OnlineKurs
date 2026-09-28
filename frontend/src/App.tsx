@@ -3,7 +3,7 @@ import axios from "axios";
 import { useState } from "react";
 import { RouterProvider } from "react-router-dom";
 import { ErrorBoundary } from "@/components/guards/ErrorBoundary";
-import { Logo } from "@/components/layout/Logo";
+import { LogoMark } from "@/components/layout/Logo";
 import { Spinner } from "@/components/ui/Spinner";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -38,7 +38,7 @@ function createQueryClient(): QueryClient {
 function Splash() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-slate-50 dark:bg-slate-950">
-      <Logo />
+      <LogoMark />
       <Spinner size="lg" />
     </div>
   );
@@ -47,7 +47,7 @@ function Splash() {
 function AppRoutes() {
   const { isLoading } = useAuth();
   if (isLoading) return <Splash />;
-  return <RouterProvider router={router} />;
+  return <RouterProvider router={router} future={{ v7_startTransition: true }} />;
 }
 
 export default function App() {

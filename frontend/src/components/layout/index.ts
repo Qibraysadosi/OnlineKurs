@@ -1,6 +1,6 @@
 export { Container } from "./Container";
 export type { ContainerProps } from "./Container";
-export { Logo } from "./Logo";
+export { Logo, LogoMark } from "./Logo";
 export { ThemeToggle } from "./ThemeToggle";
 export { Navbar } from "./Navbar";
 export { Footer } from "./Footer";

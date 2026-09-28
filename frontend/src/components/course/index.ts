@@ -1,3 +1,5 @@
+export { CategoryIcon, CATEGORY_ICON_OPTIONS } from "./CategoryIcon";
+export type { CategoryIconProps } from "./CategoryIcon";
 export { CourseCard, CourseCardSkeleton } from "./CourseCard";
 export type { CourseCardProps } from "./CourseCard";
 export { CourseCover } from "./CourseCover";

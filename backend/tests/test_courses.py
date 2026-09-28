@@ -221,6 +221,18 @@ def test_unpublished_visible_to_owner_and_admin(
     assert [item["slug"] for item in mine] == ["qoralama"]
 
 
+def test_course_detail_by_id(client: TestClient, db, teacher, teacher_headers) -> None:
+    course = create_course(db, teacher, title="Raqamli kurs")
+    by_id = client.get(f"/api/courses/{course.id}")
+    assert by_id.status_code == 200
+    assert by_id.json()["slug"] == "raqamli-kurs"
+    assert by_id.json() == client.get("/api/courses/raqamli-kurs").json()
+    assert client.get(f"/api/courses/{course.id + 1000}").status_code == 404
+    draft = create_course(db, teacher, title="Qoralama id", published=False)
+    assert client.get(f"/api/courses/{draft.id}").status_code == 404
+    assert client.get(f"/api/courses/{draft.id}", headers=teacher_headers).status_code == 200
+
+
 def test_category_filter_and_admin_crud(
     client: TestClient, db, teacher, admin_headers, student_headers
 ) -> None:

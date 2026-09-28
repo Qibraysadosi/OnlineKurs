@@ -23,6 +23,9 @@ export const coursesApi = {
 
   get: async (slug: string): Promise<CourseDetail> => (await api.get<CourseDetail>(`/courses/${slug}`)).data,
 
+  /** Same detail payload, looked up by numeric id (editor routes carry the id, not the slug). */
+  getById: async (id: number): Promise<CourseDetail> => (await api.get<CourseDetail>(`/courses/${id}`)).data,
+
   create: async (payload: CourseCreatePayload): Promise<CourseDetail> =>
     (await api.post<CourseDetail>("/courses", payload)).data,
 

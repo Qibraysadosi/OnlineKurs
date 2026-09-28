@@ -94,11 +94,13 @@ def featured_courses(db: DbSession) -> list[CourseCard]:
     return fetch_cards(db, stmt)
 
 
-@router.get("/{slug}", response_model=CourseDetail)
-def read_course(slug: str, db: DbSession, user: OptionalUser) -> CourseDetail:
+@router.get("/{slug_or_id}", response_model=CourseDetail)
+def read_course(slug_or_id: str, db: DbSession, user: OptionalUser) -> CourseDetail:
+    """Course detail by slug (public links) or by numeric id (editor routes)."""
+    key = Course.id == int(slug_or_id) if slug_or_id.isdigit() else Course.slug == slug_or_id
     stmt = (
         select(Course)
-        .where(Course.slug == slug)
+        .where(key)
         .options(
             selectinload(Course.sections).selectinload(Section.lessons),
             selectinload(Course.teacher),

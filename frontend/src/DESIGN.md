@@ -22,7 +22,7 @@ src/
     ui/         Button IconButton Input Textarea Select Checkbox Switch Badge Card(+Header/Body/Footer/StatCard)
                 Modal ConfirmDialog Skeleton SkeletonText Spinner PageSpinner Avatar ProgressBar Tabs EmptyState
                 Alert Pagination Table primitives FileDropzone StarRating Dropdown
-    layout/     Container Logo ThemeToggle Navbar Footer PageHeader Sidebar MainLayout DashboardLayout LearnLayout
+    layout/     Container Logo LogoMark (no link; boot splash) ThemeToggle Navbar Footer PageHeader Sidebar MainLayout DashboardLayout LearnLayout
     course/     CourseCard CourseCardSkeleton CourseCover CourseGrid CurriculumAccordion RatingStars PriceTag LevelBadge VideoPlayer
     guards/     RequireAuth RequireRole GuestOnly ErrorBoundary ErrorFallback
   pages/        public/ student/ teacher/ admin/   (one default-exported component per file)
@@ -69,7 +69,7 @@ import { authApi, coursesApi, lessonsApi, getErrorMessage, queryKeys } from "@/a
 | | `remove(id)` | `void` |
 | `coursesApi` | `list(params?: CourseListParams)` | `Paginated<CourseCard>` |
 | | `featured()` | `CourseCard[]` |
-| | `get(slug)` | `CourseDetail` |
+| | `get(slug)` / `getById(id)` | `CourseDetail` (same endpoint; the editor route carries the id) |
 | | `create(CourseCreatePayload)` / `update(id, CourseUpdatePayload)` | `CourseDetail` |
 | | `remove(id)` | `void` |
 | | `uploadCover(id, file, onProgress?)` | `CourseDetail` |
@@ -312,6 +312,7 @@ const upload = useMutation({
 ## 7. Course components (`@/components/course`)
 
 ```ts
+<CategoryIcon name={category.icon} className />                          // lucide icon by stored name, book fallback; CATEGORY_ICON_OPTIONS = admin <Select> options
 <CourseCard course={CourseCard} progressPercent? to? showStatus? />     // link to /courses/:slug; progress replaces price
 <CourseCardSkeleton />
 <CourseCover course={{title,cover_url,category}} className letterClassName />   // image or gradient + first letter (use for detail hero too)
@@ -342,20 +343,17 @@ const upload = useMutation({
 
 ## 9. Router (`src/router.tsx`)
 
-Pages are default exports, lazily imported. Push into the group array that matches the access rule; the layouts and guards are already wired:
+Pages are default exports, lazily imported at the top of the file and listed in the group array that matches the access rule; the layouts and guards are wired once around each group:
 
 ```tsx
 const HomePage = lazy(() => import("@/pages/public/HomePage"));
-publicRoutes.push({ index: true, element: <Lazy><HomePage /></Lazy> });
-publicRoutes.push({ path: "courses/:slug", element: <Lazy><CourseDetailPage /></Lazy> });
-guestRoutes.push({ path: "login", element: <Lazy><LoginPage /></Lazy> });
-studentRoutes.push({ path: "dashboard", element: <Lazy><DashboardPage /></Lazy> });   // DashboardLayout + RequireAuth
-learnRoutes.push({ path: "learn/:slug", element: <Lazy><LearnPage /></Lazy> });      // LearnLayout + RequireAuth
-teacherRoutes.push({ path: "teacher", element: <Lazy><TeacherDashboardPage /></Lazy> });      // RequireRole teacher
-adminRoutes.push({ path: "admin/users", element: <Lazy><AdminUsersPage /></Lazy> });         // RequireRole admin
+const publicRoutes: RouteObject[] = [
+  { index: true, element: <Lazy><HomePage /></Lazy> },
+  { path: "courses/:slug", element: <Lazy><CourseDetailPage /></Lazy> },
+];
 ```
 
-Groups: `publicRoutes` (MainLayout), `guestRoutes` (MainLayout + GuestOnly), `studentRoutes` (DashboardLayout + RequireAuth — dashboard, my-courses, checkout, profile, payments), `learnRoutes` (LearnLayout + RequireAuth), `teacherRoutes`, `adminRoutes`. Paths are absolute-from-root without leading slash. `*` → NotFoundPage is already mounted. Access to `/learn/:slug` is enforced in the page: if `course.has_access` is false, `toast.error(...)` and `navigate(`/courses/${slug}`)`.
+Groups: `publicRoutes` (MainLayout), `guestRoutes` (MainLayout + GuestOnly — login, register), `studentRoutes` (DashboardLayout + RequireAuth — dashboard, my-courses, checkout, profile, payments), `learnRoutes` (LearnLayout + RequireAuth — learn/:slug), `teacherRoutes` (DashboardLayout + RequireRole teacher — teacher, teacher/courses/new, teacher/courses/:id/edit), `adminRoutes` (DashboardLayout + RequireRole admin — admin, admin/users, admin/courses, admin/payments, admin/categories). Paths are absolute-from-root without leading slash. `*` → NotFoundPage is mounted under MainLayout. Vite emits one chunk per page group (`pages-public`, `pages-student`, `pages-teacher`, `pages-admin`), so a new page belongs in `src/pages/<group>/`. Access to `/learn/:slug` is enforced in the page: if `course.has_access` is false, `toast.error(...)` and `navigate(`/courses/${slug}`)`.
 
 ---
 
