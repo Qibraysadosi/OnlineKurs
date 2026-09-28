@@ -358,3 +358,20 @@ def test_reviews_one_per_user_and_update(
     assert client.get("/api/courses/bepul-kurs").json()["rating_avg"] == 4.0
     stats = client.get("/api/teacher/stats", headers=teacher_headers).json()
     assert stats == {"courses_count": 1, "students_count": 2, "revenue": 0, "reviews_avg": 4.0}
+
+
+def test_free_enroll_closes_pending_payment_after_course_became_free(
+    client: TestClient, db, teacher, teacher_headers, student_headers
+) -> None:
+    course = create_course(db, teacher, title="Pullik kurs", price=150000)
+    opened = client.post("/api/payments", json={"course_id": course.id}, headers=student_headers)
+    assert opened.status_code == 201
+
+    client.patch(f"/api/courses/{course.id}", json={"price": 0}, headers=teacher_headers)
+    enrolled = client.post(f"/api/courses/{course.id}/enroll", headers=student_headers)
+    assert enrolled.status_code == 201
+
+    payments = client.get("/api/me/payments", headers=student_headers).json()
+    assert [p["status"] for p in payments if p["id"] == opened.json()["id"]] == ["failed"]
+    confirm = client.post(f"/api/payments/{opened.json()['id']}/confirm", headers=student_headers)
+    assert confirm.status_code in (400, 409)

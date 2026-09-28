@@ -4,7 +4,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.common import IdPath, conflict, get_visible_course_or_404
 from app.core.deps import CurrentUser, DbSession
-from app.models import Enrollment, Lesson, LessonProgress, Section
+from app.models import Enrollment, Lesson, LessonProgress, Payment, PaymentStatus, Section
 from app.schemas.enrollment import EnrollmentOut
 from app.services.catalog import cards_by_id, enrollment_out
 from app.services.enrollments import ensure_enrollment
@@ -52,6 +52,15 @@ def enroll_free(
     if course.price > 0:
         raise conflict("Bu kurs pullik")
     enrollment, created = ensure_enrollment(db, user.id, course.id)
+    # A checkout started while the course was still paid must not stay pending forever.
+    for stale in db.scalars(
+        select(Payment).where(
+            Payment.user_id == user.id,
+            Payment.course_id == course.id,
+            Payment.status == PaymentStatus.pending,
+        )
+    ):
+        stale.status = PaymentStatus.failed
     db.commit()
     db.refresh(enrollment)
     if not created:
